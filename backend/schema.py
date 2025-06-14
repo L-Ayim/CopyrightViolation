@@ -16,7 +16,9 @@ try:
         text=True,
         check=True,
     ).stdout
-    CACHED_EXTRACTORS = [line.strip() for line in _raw.splitlines() if line.strip()]
+    _extractors = [line.strip() for line in _raw.splitlines() if line.strip()]
+    # Ensure no duplicates while preserving order
+    CACHED_EXTRACTORS = list(dict.fromkeys(_extractors))
 except Exception:
     CACHED_EXTRACTORS = []
 
