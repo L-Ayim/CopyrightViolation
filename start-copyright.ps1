@@ -33,7 +33,7 @@ if ($gpu) {
 }
 
 # Ensure frontend deps
-if (!(Test-Path (Join-Path $PSScriptRoot 'frontend' 'node_modules'))) {
+if (!(Test-Path (Join-Path (Join-Path $PSScriptRoot 'frontend') 'node_modules'))) {
     Push-Location frontend
     npm install
     Pop-Location
