@@ -11,9 +11,9 @@ if (!(Test-Path $venvPath)) {
 $activate = Join-Path (Join-Path $venvPath 'Scripts') 'Activate.ps1'
 & $activate
 
-# Upgrade pip and install common requirements
-pip install --upgrade pip
-pip install -r requirements.txt
+# Upgrade pip and install common requirements using the virtualenv Python
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 
 # Detect GPU using nvidia-smi if available
 $gpu = $false
@@ -26,10 +26,10 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
 
 if ($gpu) {
     Write-Host "GPU detected - installing CUDA build of torch"
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 } else {
     Write-Host "No GPU detected - installing CPU build of torch"
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+    python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 }
 
 # Ensure frontend deps

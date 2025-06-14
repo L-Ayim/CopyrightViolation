@@ -1,7 +1,7 @@
 # Python dependencies for the Django backend
 Django>=5.2,<6
 channels>=4
-corsheaders>=4
+django-cors-headers>=4
 ariadne>=0.23
 ariadne-django>=0.6
 yt-dlp>=2024.4.0
