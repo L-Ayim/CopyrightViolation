@@ -187,7 +187,7 @@ def resolve_separate_stems(_, __, filename: str, model: str):
     out_dir = MEDIA_DIR / vid / "stems"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    gpu_flag = "--gpu" if torch.cuda.is_available() else "--cpu"
+    device_flag = f"--device={'cuda' if torch.cuda.is_available() else 'cpu'}"
     proc = subprocess.run(
         [
             sys.executable,
@@ -200,7 +200,7 @@ def resolve_separate_stems(_, __, filename: str, model: str):
             "--filename",
             "{stem}.{ext}",
             "--mp3",
-            gpu_flag,
+            device_flag,
             str(src_path),
         ],
         capture_output=True,
