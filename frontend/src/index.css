@@ -2,3 +2,27 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom checkbox style: yellow box with black check mark */
+.yellow-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem; /* 16px */
+  height: 1rem;
+  border-radius: 0.25rem; /* rounded */
+  border: 1px solid #facc15; /* yellow-400 */
+  background-color: #facc15; /* yellow box */
+  position: relative;
+  cursor: pointer;
+}
+.yellow-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 0.1rem;
+  left: 0.29rem;
+  width: 0.25rem;
+  height: 0.55rem;
+  border: solid #000;
+  border-width: 0 0.125rem 0.125rem 0;
+  transform: rotate(45deg);
+}
