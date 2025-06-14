@@ -4,7 +4,14 @@ import urllib.parse
 from pathlib import Path
 import sys
 
-from ariadne import make_executable_schema, QueryType, MutationType, gql
+from ariadne import (
+    make_executable_schema,
+    QueryType,
+    MutationType,
+    SubscriptionType,
+    gql,
+)
+import asyncio
 import torch
 from django.conf import settings
 
@@ -47,10 +54,18 @@ type_defs = gql("""
     downloadVideo(url: String!): DownloadResponse!
     separateStems(filename: String!, model: String!): SeparationResponse!
   }
+
+  type Subscription {
+    separationLogs(filename: String!): String!
+  }
 """)
 
 query    = QueryType()
 mutation = MutationType()
+subscription = SubscriptionType()
+
+# Map of filename to asyncio.Queue of log lines
+SEPARATION_QUEUES: dict[str, asyncio.Queue[str]] = {}
 
 
 def extract_video_id(url: str) -> str:
@@ -181,7 +196,7 @@ def resolve_download_video(_, __, url: str):
 
 
 @mutation.field("separateStems")
-def resolve_separate_stems(_, __, filename: str, model: str):
+async def resolve_separate_stems(_, __, filename: str, model: str):
     src_path = MEDIA_DIR / filename
     vid = Path(filename).stem
     out_dir = MEDIA_DIR / vid / "stems"
@@ -197,8 +212,11 @@ def resolve_separate_stems(_, __, filename: str, model: str):
     else:
         reason = ""
     device_flag = f"--device={device}"
-    proc = subprocess.run(
-        [
+    queue = asyncio.Queue()
+    SEPARATION_QUEUES[filename] = queue
+
+    async def run():
+        proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
             "demucs.separate",
@@ -211,14 +229,46 @@ def resolve_separate_stems(_, __, filename: str, model: str):
             "--mp3",
             device_flag,
             str(src_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    extra = f"\n{reason}" if reason else ""
-    logs = f"Using device: {device}{extra}\n" + proc.stdout + proc.stderr
-    success = proc.returncode == 0
-    return {"success": success, "logs": logs}
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+
+        header = f"Using device: {device}\n"
+        if reason:
+            header += f"{reason}\n"
+        await queue.put(header)
+
+        try:
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                await queue.put(line.decode())
+            await proc.wait()
+        finally:
+            await queue.put(None)
+            SEPARATION_QUEUES.pop(filename, None)
+
+    asyncio.create_task(run())
+
+    return {"success": True, "logs": ""}
 
 
-schema = make_executable_schema(type_defs, query, mutation)
+@subscription.source("separationLogs")
+async def separation_logs_source(_, info, filename: str):
+    queue = SEPARATION_QUEUES.get(filename)
+    if queue is None:
+        return
+    while True:
+        line = await queue.get()
+        if line is None:
+            break
+        yield line
+
+
+@subscription.field("separationLogs")
+def separation_logs_resolver(line, info, filename: str):
+    return line
+
+
+schema = make_executable_schema(type_defs, query, mutation, subscription)
