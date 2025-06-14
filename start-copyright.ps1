@@ -45,7 +45,19 @@ Push-Location frontend
 $frontend = Start-Process -FilePath npm -ArgumentList 'run','dev','--','--host','0.0.0.0' -PassThru
 Pop-Location
 
-Write-Host "Backend available on http://<your-ip>:8000" -ForegroundColor Green
-Write-Host "Frontend available on http://<your-ip>:5173" -ForegroundColor Green
+# Determine the LAN IPv4 address for display. Fallback to hostname lookup if
+# Get-NetIPAddress isn't available (e.g. on non-Windows hosts).
+try {
+    $ipAddr = Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
+        $_.IPAddress -ne '127.0.0.1' -and $_.IPAddress -notlike '169.254.*'
+    } | Select-Object -First 1 -ExpandProperty IPAddress
+} catch {
+    $ipAddr = ([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+        Select-Object -First 1).IPAddressToString
+}
+
+Write-Host "Backend available on http://$ipAddr:8000" -ForegroundColor Green
+Write-Host "Frontend available on http://$ipAddr:5173" -ForegroundColor Green
 
 Wait-Process -Id $backend.Id,$frontend.Id
