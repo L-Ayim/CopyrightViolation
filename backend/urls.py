@@ -5,7 +5,7 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 
-from ariadne_django.views import GraphQLView  # <— correct import
+from ariadne_django.views import GraphQLAsyncView
 from .schema import schema
 
 urlpatterns = [
@@ -15,7 +15,7 @@ urlpatterns = [
     # GraphQL HTTP endpoint (queries & mutations)
     path(
         "graphql/",
-        GraphQLView.as_view(schema=schema),
+        GraphQLAsyncView.as_view(schema=schema),
         name="graphql",
     ),
 ]
