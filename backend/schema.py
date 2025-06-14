@@ -98,12 +98,12 @@ async def search_stream_source(obj, info, query, limit):
         prefix,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        text=True,
     )
     assert process.stdout
-    async for line in process.stdout:
-        if not line:
+    async for raw_line in process.stdout:
+        if not raw_line:
             break
+        line = raw_line.decode()
         data = json.loads(line)
         yield {
             "id": data.get("id") or data.get("url"),
