@@ -146,18 +146,6 @@ export default function App() {
         />
       </div>
 
-      {/* Embedded Player */}
-      {videoId && (
-        <div className="w-full max-w-xl aspect-video">
-          <iframe
-            title="YouTube player"
-            src={`https://www.youtube.com/embed/${videoId}`}
-            allow="autoplay; encrypted-media"
-            className="w-full h-full rounded shadow-lg"
-          />
-        </div>
-      )}
-
       {/* Download Buttons */}
       {videoId && (
         <div className="w-full max-w-md flex flex-col sm:flex-row gap-4">
@@ -175,6 +163,9 @@ export default function App() {
           >
             Download Video
           </button>
+          {anyLoading && (
+            <div className="w-full h-2 bg-yellow-400 animate-pulse mt-2" />
+          )}
         </div>
       )}
 

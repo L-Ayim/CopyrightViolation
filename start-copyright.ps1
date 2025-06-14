@@ -15,13 +15,19 @@ $activate = Join-Path (Join-Path $venvPath 'Scripts') 'Activate.ps1'
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-# Detect GPU using nvidia-smi if available
+# Detect GPU using nvidia-smi unless overridden with env vars
 $gpu = $false
-if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
-    try {
-        nvidia-smi > $null
-        if ($LASTEXITCODE -eq 0) { $gpu = $true }
-    } catch {}
+$forceCuda = $env:FORCE_CUDA
+$forceCpu  = $env:FORCE_CPU
+if ($forceCuda) {
+    $gpu = $true
+} elseif (-not $forceCpu) {
+    if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+        try {
+            nvidia-smi > $null
+            if ($LASTEXITCODE -eq 0) { $gpu = $true }
+        } catch {}
+    }
 }
 
 if ($gpu) {
