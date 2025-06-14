@@ -246,6 +246,7 @@ export default function App() {
                   .then(({ data }) => {
                     const text = data?.separateStems?.logs || "";
                     setLogs((p) => ({ ...p, [f.filename]: text }));
+                    setExpanded((p) => ({ ...p, [f.filename]: true }));
                   })
                   .finally(() =>
                     setQueue((p) => ({ ...p, [f.filename]: false }))
