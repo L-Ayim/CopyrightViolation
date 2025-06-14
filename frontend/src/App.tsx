@@ -100,6 +100,7 @@ export default function App() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [choosing, setChoosing] = useState<Record<string, boolean>>({});
   const [desired, setDesired] = useState<Record<string, Record<string, boolean>>>({});
+  const [logs, setLogs] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
 
   const searchTerm = search.trim().toLowerCase();
@@ -238,11 +239,17 @@ export default function App() {
                     Object.entries(desiredSel).filter(([, v]) => v)
                   ),
                 }));
+                setLogs((p) => ({ ...p, [f.filename]: "Starting separation..." }));
                 separateStems({
                   variables: { filename: f.filename, model: "htdemucs" },
-                }).finally(() =>
-                  setQueue((p) => ({ ...p, [f.filename]: false }))
-                );
+                })
+                  .then(({ data }) => {
+                    const text = data?.separateStems?.logs || "";
+                    setLogs((p) => ({ ...p, [f.filename]: text }));
+                  })
+                  .finally(() =>
+                    setQueue((p) => ({ ...p, [f.filename]: false }))
+                  );
               };
               const stemsToShow = stems.filter((s: any) => {
                 const d = desired[f.filename];
@@ -366,6 +373,13 @@ export default function App() {
                           Download Selected
                         </button>
                       )}
+                    </div>
+                  )}
+                  {logs[f.filename] && (
+                    <div className="p-2 overflow-auto max-h-40">
+                      <pre className="text-yellow-400 text-xs whitespace-pre-wrap">
+                        {logs[f.filename]}
+                      </pre>
                     </div>
                   )}
                 </div>
