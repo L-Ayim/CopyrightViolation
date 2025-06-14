@@ -1,10 +1,9 @@
 // src/App.tsx
 import React from "react";
 import { gql, useSubscription } from "@apollo/client";
-import SiteList from "./SiteList";
 import SearchPage from "./SearchPage";
 import LoadingBar from "./LoadingBar";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 const TIME_SUBSCRIPTION = gql`
   subscription {
@@ -22,7 +21,6 @@ function randomMorse(len: number) {
 export default function App() {
   const { data, loading, error } = useSubscription(TIME_SUBSCRIPTION);
   const display = data?.time ? randomMorse(data.time.length) : "…";
-  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-black flex flex-col items-center p-6 space-y-12">
@@ -49,8 +47,7 @@ export default function App() {
       </div>
 
       <Routes>
-        <Route path="/" element={<SiteList onSelect={(s) => navigate(`/${s}`)} />} />
-        <Route path="/:site" element={<SearchPage />} />
+        <Route path="/" element={<SearchPage />} />
       </Routes>
     </div>
   );

@@ -1,11 +1,10 @@
 import React from "react";
-import { gql, useLazyQuery } from "@apollo/client";
-import { useParams } from "react-router-dom";
+import { gql, useSubscription } from "@apollo/client";
 import LoadingBar from "./LoadingBar";
 
-const SEARCH = gql`
-  query Search($site: String!, $query: String!, $limit: Int) {
-    search(site: $site, query: $query, limit: $limit) {
+const SEARCH_STREAM = gql`
+  subscription SearchStream($query: String!, $limit: Int) {
+    searchStream(query: $query, limit: $limit) {
       id
       title
       url
@@ -15,20 +14,32 @@ const SEARCH = gql`
 `;
 
 export default function SearchPage() {
-  const { site = "" } = useParams();
   const [term, setTerm] = React.useState("");
-  const [runSearch, { data, loading, error }] = useLazyQuery(SEARCH);
+  const [activeQuery, setActiveQuery] = React.useState<string | null>(null);
+  const [results, setResults] = React.useState<any[]>([]);
+
+  const { data, loading, error } = useSubscription(SEARCH_STREAM, {
+    variables: { query: activeQuery || "", limit: 20 },
+    skip: !activeQuery,
+  });
+
+  React.useEffect(() => {
+    if (data?.searchStream) {
+      setResults((prev) => [...prev, data.searchStream]);
+    }
+  }, [data]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!term) return;
-    runSearch({ variables: { site, query: term, limit: 5 } });
+    setResults([]);
+    setActiveQuery(term);
   };
 
   return (
     <div className="w-full max-w-3xl space-y-6">
       <h2 className="text-yellow-400 text-center text-2xl font-semibold capitalize">
-        {site}
+        YouTube
       </h2>
       <form onSubmit={handleSubmit} className="flex">
         <input
@@ -45,17 +56,17 @@ export default function SearchPage() {
           &rarr;
         </button>
       </form>
-      {loading && <LoadingBar />}
+      {loading && results.length === 0 && <LoadingBar />}
       {error && <p className="text-yellow-400">Error: {error.message}</p>}
-      {data && (
+      {results.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {data.search.map((item: {id: string; title: string; url: string; thumbnail?: string | null}) => (
+          {results.map((item: { id: string; title: string; url: string; thumbnail?: string | null }) => (
             <a
               key={item.id}
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-black border-2 border-yellow-400 rounded-lg p-4 flex flex-col transition duration-200 hover:bg-yellow-400 hover:text-black focus:bg-yellow-400 focus:text-black"
+              className="group bg-black border-2 border-yellow-400 rounded-lg p-4 flex flex-col transition duration-200 hover:bg-yellow-400 focus:bg-yellow-400"
             >
               {item.thumbnail && (
                 <img
@@ -64,7 +75,9 @@ export default function SearchPage() {
                   className="w-full h-40 object-cover mb-2 rounded"
                 />
               )}
-              <span className="text-yellow-400 font-medium">{item.title}</span>
+              <span className="font-medium text-yellow-400 group-hover:text-black group-focus:text-black">
+                {item.title}
+              </span>
             </a>
           ))}
         </div>
@@ -72,4 +85,3 @@ export default function SearchPage() {
     </div>
   );
 }
-
