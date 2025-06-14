@@ -19,6 +19,9 @@ export default function SiteList({ onSelect }: Props) {
   if (loading) return <LoadingBar />;
   if (error)   return <p className="text-yellow-400">Error: {error.message}</p>;
 
+  // Remove any duplicate entries that might come from the API
+  const sites = Array.from(new Set(data.supportedSites));
+
   return (
     <div className="w-full max-w-6xl">
       <div
@@ -31,7 +34,7 @@ export default function SiteList({ onSelect }: Props) {
           gap-4
         "
       >
-        {data.supportedSites.map((site: string) => (
+        {sites.map((site: string) => (
           <button
             key={site}
             onClick={() => onSelect && onSelect(site)}
