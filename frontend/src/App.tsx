@@ -1,5 +1,5 @@
 // src/App.tsx
-import React from "react";
+
 import { gql, useSubscription } from "@apollo/client";
 import SearchPage from "./SearchPage";
 import LoadingBar from "./LoadingBar";

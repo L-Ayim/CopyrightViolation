@@ -16,7 +16,9 @@ const SEARCH_STREAM = gql`
 export default function SearchPage() {
   const [term, setTerm] = React.useState("");
   const [activeQuery, setActiveQuery] = React.useState<string | null>(null);
-  const [results, setResults] = React.useState<any[]>([]);
+  const [results, setResults] = React.useState<
+    Array<{ id: string; title: string; url: string; thumbnail?: string | null }>
+  >([]);
 
   const { data, loading, error } = useSubscription(SEARCH_STREAM, {
     variables: { query: activeQuery || "", limit: 20 },
