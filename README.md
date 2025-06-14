@@ -9,7 +9,7 @@ On Windows, use `start-copyright.ps1` to create a virtual environment and instal
 If you set up the environment manually, be sure to install the appropriate PyTorch build. For GPU acceleration, run:
 
 ```powershell
-python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
 Then start Django:

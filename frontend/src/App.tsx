@@ -148,21 +148,23 @@ export default function App() {
 
       {/* Download Buttons */}
       {videoId && (
-        <div className="w-full max-w-md flex flex-col sm:flex-row gap-4">
-          <button
-            onClick={() => downloadAudio({ variables: { url } })}
-            disabled={anyLoading}
-            className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
-          >
-            Download Audio
-          </button>
-          <button
-            onClick={() => downloadVideo({ variables: { url } })}
-            disabled={anyLoading}
-            className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
-          >
-            Download Video
-          </button>
+        <div className="w-full max-w-md">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              onClick={() => downloadAudio({ variables: { url } })}
+              disabled={anyLoading}
+              className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
+            >
+              Download Audio
+            </button>
+            <button
+              onClick={() => downloadVideo({ variables: { url } })}
+              disabled={anyLoading}
+              className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
+            >
+              Download Video
+            </button>
+          </div>
           {anyLoading && (
             <div className="w-full h-2 bg-yellow-400 animate-pulse mt-2" />
           )}
