@@ -4,14 +4,16 @@ import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { createClient } from "graphql-ws";
 import { getMainDefinition } from "@apollo/client/utilities";
 
-// HTTP endpoint
-const httpLink = new HttpLink({
-  uri: "http://127.0.0.1:8000/graphql/",
-});
+// Resolve the backend host dynamically so the frontend works when accessed
+// from other devices on the network. During development the Vite dev server
+// proxies `/graphql` to the Django backend.
+const httpLink = new HttpLink({ uri: "/graphql/" });
 
-// WebSocket endpoint
+const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
 const wsLink = new GraphQLWsLink(
-  createClient({ url: "ws://127.0.0.1:8000/graphql/" })
+  createClient({
+    url: `${wsProtocol}://${window.location.host}/graphql/`,
+  })
 );
 
 // Route subscriptions to WS, everything else to HTTP
