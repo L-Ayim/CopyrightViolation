@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import json
 import subprocess
+from typing import Dict, Tuple
 
 from ariadne import make_executable_schema, QueryType, SubscriptionType, gql
 
@@ -45,6 +46,10 @@ type_defs = gql("""
 # ──────────────────────────────────────────────────────────────────────────────
 query = QueryType()
 
+# Simple in-memory cache for search results
+SEARCH_CACHE: Dict[Tuple[str, str, int], Tuple[float, list]] = {}
+CACHE_TTL = 300  # seconds
+
 @query.field("supportedSites")
 def resolve_supported_sites(obj, info):
     return CACHED_EXTRACTORS
@@ -53,6 +58,13 @@ def resolve_supported_sites(obj, info):
 async def resolve_search(obj, info, site, query, limit):
     # Debug to confirm invocation
     print(f">>> resolve_search called: site={site!r}, query={query!r}, limit={limit}")
+
+    key = (site, query, limit)
+    now = datetime.datetime.utcnow().timestamp()
+    cached = SEARCH_CACHE.get(key)
+    if cached and now - cached[0] < CACHE_TTL:
+        print("⚡ Returning cached results")
+        return cached[1]
 
     # Build the correct yt-dlp prefix
     prefix = f"ytsearch{limit}:{query}" if site == "youtube" else f"{site}:search{limit}:{query}"
@@ -80,6 +92,7 @@ async def resolve_search(obj, info, site, query, limit):
         })
     # Debug to confirm return type
     print("⏹️ Returning items:", type(items), "length=", len(items))
+    SEARCH_CACHE[key] = (now, items)
     return items
 
 # ──────────────────────────────────────────────────────────────────────────────
