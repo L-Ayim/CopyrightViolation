@@ -4,6 +4,7 @@ import urllib.parse
 from pathlib import Path
 
 from ariadne import make_executable_schema, QueryType, MutationType, gql
+import torch
 from django.conf import settings
 
 # Ensure MEDIA_ROOT exists
@@ -23,6 +24,17 @@ type_defs = gql("""
     type: String!
     title: String!
     thumbnail: String
+    stems: [Stem!]!
+  }
+
+  type Stem {
+    name: String!
+    url: String!
+  }
+
+  type SeparationResponse {
+    success: Boolean!
+    logs: String
   }
 
   type Query {
@@ -32,6 +44,7 @@ type_defs = gql("""
   type Mutation {
     downloadAudio(url: String!): DownloadResponse!
     downloadVideo(url: String!): DownloadResponse!
+    separateStems(filename: String!, model: String!): SeparationResponse!
   }
 """)
 
@@ -88,12 +101,23 @@ def resolve_downloads(_, __):
         meta = read_metadata(vid)
         rel_url = build_media_url(f.name)
 
+        stems_list = []
+        if typ == "audio":
+            stems_dir = MEDIA_DIR / vid / "stems"
+            if stems_dir.exists():
+                for stem_file in sorted(stems_dir.glob("*.wav")):
+                    stems_list.append({
+                        "name": stem_file.stem,
+                        "url": build_media_url(f"{vid}/stems/{stem_file.name}"),
+                    })
+
         items.append({
             "filename":  f.name,
             "url":       rel_url,
             "type":      typ,
             "title":     meta["title"],
             "thumbnail": meta.get("thumbnail"),
+            "stems":     stems_list,
         })
     return items
 
@@ -153,6 +177,24 @@ def resolve_download_video(_, __, url: str):
     rel_url = build_media_url(out_filename) if success else None
 
     return {"success": success, "message": message, "downloadUrl": rel_url}
+
+
+@mutation.field("separateStems")
+def resolve_separate_stems(_, __, filename: str, model: str):
+    src_path = MEDIA_DIR / filename
+    vid = Path(filename).stem
+    out_dir = MEDIA_DIR / vid / "stems"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    gpu_flag = "--gpu" if torch.cuda.is_available() else "--cpu"
+    proc = subprocess.run(
+        ["demucs", model, "--out", str(out_dir), gpu_flag, str(src_path)],
+        capture_output=True,
+        text=True,
+    )
+    logs = proc.stdout + proc.stderr
+    success = proc.returncode == 0
+    return {"success": success, "logs": logs}
 
 
 schema = make_executable_schema(type_defs, query, mutation)
