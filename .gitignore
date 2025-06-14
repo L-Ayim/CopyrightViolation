@@ -13,3 +13,4 @@ venv/
 # Media & static
 media/
 staticfiles/
+node_modules/

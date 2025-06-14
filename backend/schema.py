@@ -71,14 +71,21 @@ async def resolve_search(obj, info, site, query, limit):
 
     # Offload subprocess.run to a thread pool
     def run_yt_dlp():
-        return subprocess.run(
-            ["yt-dlp", "--dump-json", prefix],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
+        try:
+            result = subprocess.run(
+                ["yt-dlp", "--dump-json", prefix],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout
+        except subprocess.CalledProcessError as e:
+            print(f"yt-dlp failed: {e.stderr}")
+            return ""
 
     stdout = await asyncio.get_event_loop().run_in_executor(None, run_yt_dlp)
+    if not stdout:
+        return []
 
     # Parse lines into a Python list
     items = []

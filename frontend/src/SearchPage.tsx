@@ -1,6 +1,7 @@
 import React from "react";
 import { gql, useLazyQuery } from "@apollo/client";
 import { useParams } from "react-router-dom";
+import LoadingBar from "./LoadingBar";
 
 const SEARCH = gql`
   query Search($site: String!, $query: String!, $limit: Int) {
@@ -41,14 +42,14 @@ export default function SearchPage() {
           type="submit"
           className="bg-black border-2 border-yellow-400 rounded-r px-4 py-2 text-yellow-400 hover:bg-yellow-400 hover:text-black focus:bg-yellow-400 focus:text-black"
         >
-          Go
+          &rarr;
         </button>
       </form>
-      {loading && <p className="text-yellow-400">Loading…</p>}
+      {loading && <LoadingBar />}
       {error && <p className="text-yellow-400">Error: {error.message}</p>}
       {data && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {data.search.map((item: any) => (
+          {data.search.map((item: {id: string; title: string; url: string; thumbnail?: string | null}) => (
             <a
               key={item.id}
               href={item.url}

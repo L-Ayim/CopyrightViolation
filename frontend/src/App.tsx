@@ -3,6 +3,7 @@ import React from "react";
 import { gql, useSubscription } from "@apollo/client";
 import SiteList from "./SiteList";
 import SearchPage from "./SearchPage";
+import LoadingBar from "./LoadingBar";
 import { Routes, Route, useNavigate } from "react-router-dom";
 
 const TIME_SUBSCRIPTION = gql`
@@ -40,7 +41,7 @@ export default function App() {
 
       {/* Optional Morse “clock” */}
       <div className="bg-black border-2 border-yellow-400 p-8 rounded-lg text-center">
-        {loading && <p className="text-yellow-400">Connecting…</p>}
+        {loading && <LoadingBar />}
         {error && <p className="text-yellow-400">Error: {error.message}</p>}
         {!loading && !error && (
           <pre className="text-yellow-400 text-4xl font-mono leading-snug">{display}</pre>
