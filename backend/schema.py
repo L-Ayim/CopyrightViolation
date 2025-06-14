@@ -189,7 +189,17 @@ def resolve_separate_stems(_, __, filename: str, model: str):
 
     gpu_flag = "--gpu" if torch.cuda.is_available() else "--cpu"
     proc = subprocess.run(
-        [sys.executable, "-m", "demucs.separate", model, "--out", str(out_dir), gpu_flag, str(src_path)],
+        [
+            sys.executable,
+            "-m",
+            "demucs.separate",
+            "-n",
+            model,
+            "--out",
+            str(out_dir),
+            gpu_flag,
+            str(src_path),
+        ],
         capture_output=True,
         text=True,
     )

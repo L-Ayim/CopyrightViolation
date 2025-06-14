@@ -316,7 +316,7 @@ export default function App() {
                             type="checkbox"
                             checked={!!desiredSel[name]}
                             onChange={() => toggleDesired(name)}
-                            className="accent-yellow-400"
+                            className="bg-yellow-400 border-yellow-400 rounded accent-black"
                           />
                           <span className="text-yellow-400 text-sm">{name}</span>
                         </label>
@@ -338,7 +338,7 @@ export default function App() {
                             type="checkbox"
                             checked={!!sel[s.name]}
                             onChange={() => toggle(s.name)}
-                            className="accent-yellow-400"
+                            className="bg-yellow-400 border-yellow-400 rounded accent-black"
                           />
                           <span className="text-yellow-400 text-sm">
                             {`${f.title}_${s.name}`}
