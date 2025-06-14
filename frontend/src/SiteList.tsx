@@ -1,5 +1,9 @@
 // src/SiteList.tsx
 import React from "react";
+
+interface Props {
+  onSelect?: (site: string) => void;
+}
 import { gql, useQuery } from "@apollo/client";
 
 const SUPPORTED_SITES = gql`
@@ -8,7 +12,7 @@ const SUPPORTED_SITES = gql`
   }
 `;
 
-export default function SiteList() {
+export default function SiteList({ onSelect }: Props) {
   const { data, loading, error } = useQuery(SUPPORTED_SITES);
 
   if (loading) return <p className="text-yellow-400">Loading…</p>;
@@ -29,9 +33,10 @@ export default function SiteList() {
         {data.supportedSites.map((site: string) => (
           <button
             key={site}
+            onClick={() => onSelect && onSelect(site)}
             className="
-              bg-black 
-              border-2 border-yellow-400 
+              bg-black
+              border-2 border-yellow-400
               rounded-lg 
               h-24 
               flex items-center justify-center 
@@ -55,3 +60,4 @@ export default function SiteList() {
     </div>
   );
 }
+
