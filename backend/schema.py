@@ -106,10 +106,10 @@ def resolve_downloads(_, __):
         if typ == "audio":
             stems_dir = MEDIA_DIR / vid / "stems"
             if stems_dir.exists():
-                for stem_file in sorted(stems_dir.glob("*.mp3")):
+                for stem_file in sorted(stems_dir.rglob("*.mp3")):
                     stems_list.append({
                         "name": stem_file.stem,
-                        "url": build_media_url(f"{vid}/stems/{stem_file.name}"),
+                        "url": build_media_url(f"{vid}/stems/{stem_file.relative_to(stems_dir)}"),
                     })
 
         items.append({
@@ -187,7 +187,8 @@ def resolve_separate_stems(_, __, filename: str, model: str):
     out_dir = MEDIA_DIR / vid / "stems"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    device_flag = f"--device={'cuda' if torch.cuda.is_available() else 'cpu'}"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device_flag = f"--device={device}"
     proc = subprocess.run(
         [
             sys.executable,
@@ -206,7 +207,7 @@ def resolve_separate_stems(_, __, filename: str, model: str):
         capture_output=True,
         text=True,
     )
-    logs = proc.stdout + proc.stderr
+    logs = f"Using device: {device}\n" + proc.stdout + proc.stderr
     success = proc.returncode == 0
     return {"success": success, "logs": logs}
 
