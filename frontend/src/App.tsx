@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { gql, useQuery, useMutation } from "@apollo/client";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // --- GraphQL ---
 const GET_DOWNLOADS = gql`
@@ -84,7 +86,7 @@ export default function App() {
     }
   );
 
-  const [separateStems, { loading: sepLoading }] = useMutation(SEPARATE_STEMS, {
+  const [separateStems] = useMutation(SEPARATE_STEMS, {
     onCompleted() {
       refetch();
     },
@@ -93,6 +95,8 @@ export default function App() {
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
   const [search, setSearch] = useState("");
+
+  const searchTerm = search.trim().toLowerCase();
 
   useEffect(() => {
     setVideoId(extractVideoId(url));
@@ -183,7 +187,7 @@ export default function App() {
         {/* Audio Column */}
         <div className="flex-1 space-y-4">
           {dlData?.downloads
-            .filter((f: any) => f.type === "audio" && f.title.toLowerCase().includes(search.toLowerCase()))
+            .filter((f: any) => f.type === "audio" && f.title.toLowerCase().includes(searchTerm))
             .map((f: any) => {
               const ext = f.filename.slice(f.filename.lastIndexOf("."));
               const saveName = `${f.title} (Audio)${ext}`;
@@ -284,7 +288,7 @@ export default function App() {
         {/* Video Column */}
         <div className="flex-1 space-y-4">
           {dlData?.downloads
-            .filter((f: any) => f.type === "video" && f.title.toLowerCase().includes(search.toLowerCase()))
+            .filter((f: any) => f.type === "video" && f.title.toLowerCase().includes(searchTerm))
             .map((f: any) => {
               const ext = f.filename.slice(f.filename.lastIndexOf("."));
               const saveName = `${f.title} (Video)${ext}`;
