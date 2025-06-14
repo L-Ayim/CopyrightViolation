@@ -7,22 +7,6 @@ from typing import Dict, Tuple
 from ariadne import make_executable_schema, QueryType, SubscriptionType, gql
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 0️⃣ Precompute and cache extractors at import time
-# ──────────────────────────────────────────────────────────────────────────────
-try:
-    _raw = subprocess.run(
-        ["yt-dlp", "--list-extractors"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    _extractors = [line.strip() for line in _raw.splitlines() if line.strip()]
-    # Ensure no duplicates while preserving order
-    CACHED_EXTRACTORS = list(dict.fromkeys(_extractors))
-except Exception:
-    CACHED_EXTRACTORS = []
-
-# ──────────────────────────────────────────────────────────────────────────────
 # 1️⃣ Define your GraphQL schema (SDL)
 # ──────────────────────────────────────────────────────────────────────────────
 type_defs = gql("""
@@ -34,12 +18,12 @@ type_defs = gql("""
   }
 
   type Query {
-    supportedSites: [String!]!
-    search(site: String!, query: String!, limit: Int = 5): [SearchResult!]!
+    search(query: String!, limit: Int = 20): [SearchResult!]!
   }
 
   type Subscription {
     time: String!
+    searchStream(query: String!, limit: Int = 20): SearchResult!
   }
 """)
 
@@ -52,24 +36,20 @@ query = QueryType()
 SEARCH_CACHE: Dict[Tuple[str, str, int], Tuple[float, list]] = {}
 CACHE_TTL = 300  # seconds
 
-@query.field("supportedSites")
-def resolve_supported_sites(obj, info):
-    return CACHED_EXTRACTORS
-
 @query.field("search")
-async def resolve_search(obj, info, site, query, limit):
+async def resolve_search(obj, info, query, limit):
     # Debug to confirm invocation
-    print(f">>> resolve_search called: site={site!r}, query={query!r}, limit={limit}")
+    print(f">>> resolve_search called: query={query!r}, limit={limit}")
 
-    key = (site, query, limit)
+    key = ("youtube", query, limit)
     now = datetime.datetime.utcnow().timestamp()
     cached = SEARCH_CACHE.get(key)
     if cached and now - cached[0] < CACHE_TTL:
         print("⚡ Returning cached results")
         return cached[1]
 
-    # Build the correct yt-dlp prefix
-    prefix = f"ytsearch{limit}:{query}" if site == "youtube" else f"{site}:search{limit}:{query}"
+    # Build the yt-dlp prefix for YouTube only
+    prefix = f"ytsearch{limit}:{query}"
 
     # Offload subprocess.run to a thread pool
     def run_yt_dlp():
@@ -108,6 +88,34 @@ async def resolve_search(obj, info, site, query, limit):
 # 3️⃣ Map resolvers for Subscription
 # ──────────────────────────────────────────────────────────────────────────────
 subscription = SubscriptionType()
+
+@subscription.source("searchStream")
+async def search_stream_source(obj, info, query, limit):
+    prefix = f"ytsearch{limit}:{query}"
+    process = await asyncio.create_subprocess_exec(
+        "yt-dlp",
+        "--dump-json",
+        prefix,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdout
+    async for line in process.stdout:
+        if not line:
+            break
+        data = json.loads(line)
+        yield {
+            "id": data.get("id") or data.get("url"),
+            "title": data.get("title", "<no title>"),
+            "url": data.get("webpage_url") or data.get("url"),
+            "thumbnail": data.get("thumbnail"),
+        }
+    await process.wait()
+
+@subscription.field("searchStream")
+def search_stream_resolver(result, info, **kwargs):
+    return result
 
 @subscription.source("time")
 async def time_source(obj, info):
