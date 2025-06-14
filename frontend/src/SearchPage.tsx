@@ -1,4 +1,5 @@
-import React from "react";
+import { useState, useEffect } from "react";
+import type { FormEvent } from "react";
 import { gql, useSubscription } from "@apollo/client";
 import LoadingBar from "./LoadingBar";
 
@@ -14,9 +15,9 @@ const SEARCH_STREAM = gql`
 `;
 
 export default function SearchPage() {
-  const [term, setTerm] = React.useState("");
-  const [activeQuery, setActiveQuery] = React.useState<string | null>(null);
-  const [results, setResults] = React.useState<
+  const [term, setTerm] = useState("");
+  const [activeQuery, setActiveQuery] = useState<string | null>(null);
+  const [results, setResults] = useState<
     Array<{ id: string; title: string; url: string; thumbnail?: string | null }>
   >([]);
 
@@ -25,13 +26,13 @@ export default function SearchPage() {
     skip: !activeQuery,
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (data?.searchStream) {
       setResults((prev) => [...prev, data.searchStream]);
     }
   }, [data]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!term) return;
     setResults([]);

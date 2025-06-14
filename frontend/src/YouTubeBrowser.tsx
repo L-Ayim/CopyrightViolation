@@ -1,4 +1,5 @@
-import React from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { gql, useLazyQuery, useMutation } from "@apollo/client";
 import { FaSpinner } from "react-icons/fa";
 
@@ -49,10 +50,10 @@ function getEmbedUrl(url: string): string {
 }
 
 export default function YouTubeBrowser() {
-  const [term, setTerm] = React.useState("");
-  const [selectedUrl, setSelectedUrl] = React.useState<string | null>(null);
-  const [toast, setToast] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [term, setTerm] = useState("");
+  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [toast, setToast] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [runSearch, { data, loading: searchLoading }] = useLazyQuery(SEARCH_YOUTUBE);
   const [downloadAudio, { loading: audioLoading }] = useMutation(DOWNLOAD_AUDIO);
@@ -60,7 +61,7 @@ export default function YouTubeBrowser() {
 
   const results = data?.search ?? [];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!term.trim()) return;
     runSearch({ variables: { term } });
