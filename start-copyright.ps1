@@ -57,7 +57,17 @@ try {
         Select-Object -First 1).IPAddressToString
 }
 
-Write-Host "Backend available on http://$ipAddr:8000" -ForegroundColor Green
-Write-Host "Frontend available on http://$ipAddr:5173" -ForegroundColor Green
+if (-not $ipAddr) {
+    try {
+        $ipAddr = ([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+            Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+            Select-Object -First 1).IPAddressToString
+    } catch {
+        $ipAddr = 'localhost'
+    }
+}
+
+Write-Host "Backend available on http://${ipAddr}:8000" -ForegroundColor Green
+Write-Host "Frontend available on http://${ipAddr}:5173" -ForegroundColor Green
 
 Wait-Process -Id $backend.Id,$frontend.Id
