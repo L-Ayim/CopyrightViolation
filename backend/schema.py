@@ -106,7 +106,7 @@ def resolve_downloads(_, __):
         if typ == "audio":
             stems_dir = MEDIA_DIR / vid / "stems"
             if stems_dir.exists():
-                for stem_file in sorted(stems_dir.glob("*.wav")):
+                for stem_file in sorted(stems_dir.glob("*.mp3")):
                     stems_list.append({
                         "name": stem_file.stem,
                         "url": build_media_url(f"{vid}/stems/{stem_file.name}"),
@@ -197,6 +197,9 @@ def resolve_separate_stems(_, __, filename: str, model: str):
             model,
             "--out",
             str(out_dir),
+            "--filename",
+            "{stem}.{ext}",
+            "--mp3",
             gpu_flag,
             str(src_path),
         ],
