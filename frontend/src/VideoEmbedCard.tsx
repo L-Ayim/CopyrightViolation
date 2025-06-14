@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { gql, useMutation } from "@apollo/client";
 import { FaSpinner } from "react-icons/fa";
 
@@ -43,10 +43,10 @@ function getEmbedUrl(url: string): string {
 }
 
 export default function VideoEmbedCard({ url }: VideoEmbedCardProps) {
-  const [copied, setCopied] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [audioLink, setAudioLink] = React.useState<string | null>(null);
-  const [videoLink, setVideoLink] = React.useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [audioLink, setAudioLink] = useState<string | null>(null);
+  const [videoLink, setVideoLink] = useState<string | null>(null);
 
   const [downloadAudio, { loading: audioLoading }] = useMutation(DOWNLOAD_AUDIO);
   const [downloadVideo, { loading: videoLoading }] = useMutation(DOWNLOAD_VIDEO);
@@ -98,11 +98,11 @@ export default function VideoEmbedCard({ url }: VideoEmbedCardProps) {
   const embedUrl = getEmbedUrl(url);
 
   return (
-    <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition p-4 space-y-4">
+    <div className="bg-black text-yellow-400 rounded-lg shadow-md hover:shadow-lg transition p-4 space-y-4">
       <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
         <iframe
           src={embedUrl}
-          title="Embedded video"
+          title="YouTube video"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
           className="absolute top-0 left-0 w-full h-full rounded"
@@ -112,7 +112,7 @@ export default function VideoEmbedCard({ url }: VideoEmbedCardProps) {
         <button
           onClick={handleCopy}
           aria-label="Copy video URL"
-          className="bg-gray-200 hover:bg-gray-300 text-black px-4 py-2 rounded focus:outline-none"
+          className="bg-black border-2 border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black px-4 py-2 rounded focus:outline-none"
         >
           Copy URL
         </button>
@@ -131,7 +131,7 @@ export default function VideoEmbedCard({ url }: VideoEmbedCardProps) {
           onClick={handleVideo}
           aria-label="Download video"
           disabled={videoLoading}
-          className="flex items-center justify-center bg-gray-200 hover:bg-gray-300 text-black px-4 py-2 rounded focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center bg-black border-2 border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black px-4 py-2 rounded focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {videoLoading ? <FaSpinner className="animate-spin" /> : "Download Video"}
         </button>
