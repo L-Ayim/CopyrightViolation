@@ -92,6 +92,7 @@ export default function App() {
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setVideoId(extractVideoId(url));
@@ -166,12 +167,23 @@ export default function App() {
         </div>
       )}
 
+      {/* Search Downloads */}
+      <div className="w-full max-w-md">
+        <input
+          type="text"
+          placeholder="Search downloads"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full bg-black text-yellow-400 border-2 border-yellow-400 rounded px-4 py-2 focus:outline-none focus:ring focus:ring-yellow-400"
+        />
+      </div>
+
       {/* Downloaded Items: audio left, video right */}
       <div className="w-full max-w-4xl flex flex-col md:flex-row gap-6">
         {/* Audio Column */}
         <div className="flex-1 space-y-4">
           {dlData?.downloads
-            .filter((f: any) => f.type === "audio")
+            .filter((f: any) => f.type === "audio" && f.title.toLowerCase().includes(search.toLowerCase()))
             .map((f: any) => {
               const ext = f.filename.slice(f.filename.lastIndexOf("."));
               const saveName = `${f.title} (Audio)${ext}`;
@@ -272,7 +284,7 @@ export default function App() {
         {/* Video Column */}
         <div className="flex-1 space-y-4">
           {dlData?.downloads
-            .filter((f: any) => f.type === "video")
+            .filter((f: any) => f.type === "video" && f.title.toLowerCase().includes(search.toLowerCase()))
             .map((f: any) => {
               const ext = f.filename.slice(f.filename.lastIndexOf("."));
               const saveName = `${f.title} (Video)${ext}`;
