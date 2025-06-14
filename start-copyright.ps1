@@ -40,14 +40,20 @@ if (!(Test-Path (Join-Path (Join-Path $PSScriptRoot 'frontend') 'node_modules'))
 }
 
 # Start backend and frontend allowing LAN access
-$backend = Start-Process -FilePath python -ArgumentList 'manage.py','runserver','0.0.0.0:8000' -PassThru
-Push-Location frontend
-# Launch the Vite dev server as a background job rather than a separate window
-# to avoid the PowerShell npm shim from popping open a new terminal.
-$frontendJob = Start-Job -ScriptBlock {
-    npm run dev -- --host 0.0.0.0
-}
-Pop-Location
+$backend = Start-Process -FilePath python `
+    -ArgumentList 'manage.py','runserver','0.0.0.0:8000' `
+    -PassThru
+
+# Launch Vite via npm.cmd in the frontend folder, in the same window
+$npmExe = Join-Path $PSScriptRoot 'frontend\node_modules\.bin\npm.cmd'
+if (-not (Test-Path $npmExe)) { $npmExe = 'npm.cmd' }
+
+$frontend = Start-Process `
+    -FilePath $npmExe `
+    -ArgumentList 'run','dev','--','--host','0.0.0.0' `
+    -WorkingDirectory (Join-Path $PSScriptRoot 'frontend') `
+    -NoNewWindow `
+    -PassThru
 
 # Determine the LAN IPv4 address for display. Fallback to hostname lookup if
 # Get-NetIPAddress isn't available (e.g. on non-Windows hosts).
@@ -75,5 +81,4 @@ Write-Host "Backend available on http://${ipAddr}:8000" -ForegroundColor Green
 Write-Host "Frontend available on http://${ipAddr}:5173" -ForegroundColor Green
 
 # Wait for both the Django process and the Vite dev server job to exit.
-Wait-Process -Id $backend.Id
-Wait-Job -Id $frontendJob.Id | Out-Null
+Wait-Process -Id $backend.Id,$frontend.Id
