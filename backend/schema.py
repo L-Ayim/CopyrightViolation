@@ -2,6 +2,7 @@ import subprocess
 import json
 import urllib.parse
 from pathlib import Path
+import sys
 
 from ariadne import make_executable_schema, QueryType, MutationType, gql
 import torch
@@ -188,7 +189,7 @@ def resolve_separate_stems(_, __, filename: str, model: str):
 
     gpu_flag = "--gpu" if torch.cuda.is_available() else "--cpu"
     proc = subprocess.run(
-        ["demucs", model, "--out", str(out_dir), gpu_flag, str(src_path)],
+        [sys.executable, "-m", "demucs.separate", model, "--out", str(out_dir), gpu_flag, str(src_path)],
         capture_output=True,
         text=True,
     )
