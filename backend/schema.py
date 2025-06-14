@@ -187,7 +187,15 @@ def resolve_separate_stems(_, __, filename: str, model: str):
     out_dir = MEDIA_DIR / vid / "stems"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    cuda_available = torch.cuda.is_available()
+    device = "cuda" if cuda_available else "cpu"
+    if not cuda_available:
+        if torch.version.cuda is None:
+            reason = "PyTorch was installed without CUDA support."
+        else:
+            reason = "CUDA runtime not available."
+    else:
+        reason = ""
     device_flag = f"--device={device}"
     proc = subprocess.run(
         [
@@ -207,7 +215,8 @@ def resolve_separate_stems(_, __, filename: str, model: str):
         capture_output=True,
         text=True,
     )
-    logs = f"Using device: {device}\n" + proc.stdout + proc.stderr
+    extra = f"\n{reason}" if reason else ""
+    logs = f"Using device: {device}{extra}\n" + proc.stdout + proc.stderr
     success = proc.returncode == 0
     return {"success": success, "logs": logs}
 
