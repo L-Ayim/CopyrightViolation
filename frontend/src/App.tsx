@@ -213,7 +213,7 @@ export default function App() {
                     if (stem) {
                       const a = document.createElement("a");
                       a.href = stem.url;
-                      a.download = `${f.title} (${name}).wav`;
+                      a.download = `${f.title} (${name}).mp3`;
                       a.click();
                     }
                   }
