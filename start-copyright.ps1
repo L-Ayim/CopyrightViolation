@@ -8,7 +8,7 @@ if (!(Test-Path $venvPath)) {
 }
 
 # Activate the environment
-$activate = Join-Path $venvPath 'Scripts' 'Activate.ps1'
+$activate = Join-Path (Join-Path $venvPath 'Scripts') 'Activate.ps1'
 & $activate
 
 # Upgrade pip and install common requirements
