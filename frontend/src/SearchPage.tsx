@@ -38,9 +38,6 @@ export default function SearchPage() {
 
   return (
     <div className="w-full max-w-3xl space-y-6">
-      <h2 className="text-yellow-400 text-center text-2xl font-semibold capitalize">
-        YouTube
-      </h2>
       <form onSubmit={handleSubmit} className="flex">
         <input
           type="text"
@@ -53,7 +50,7 @@ export default function SearchPage() {
           type="submit"
           className="bg-black border-2 border-yellow-400 rounded-r px-4 py-2 text-yellow-400 hover:bg-yellow-400 hover:text-black focus:bg-yellow-400 focus:text-black"
         >
-          &rarr;
+          <span className="text-2xl">&rarr;</span>
         </button>
       </form>
       {loading && results.length === 0 && <LoadingBar />}
