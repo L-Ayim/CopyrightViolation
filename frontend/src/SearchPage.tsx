@@ -46,7 +46,7 @@ export default function SearchPage() {
           type="text"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
-          placeholder="Search"
+          placeholder="Paste URL"
           className="flex-grow bg-black border-2 border-yellow-400 rounded-l px-4 py-2 text-yellow-400 focus:outline-none"
         />
         <button
