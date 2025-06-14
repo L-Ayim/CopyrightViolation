@@ -17,7 +17,7 @@ from .schema import schema
 
 # On Windows, ensure subprocess support for asyncio
 if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Tell Django where to find settings and bootstrap
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
