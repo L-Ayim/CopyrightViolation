@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { gql, useQuery, useMutation } from "@apollo/client";
-import { client } from "./graphql/client";
 import { FaChevronDown } from "react-icons/fa";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -48,12 +47,6 @@ const SEPARATE_STEMS = gql`
       success
       logs
     }
-  }
-`;
-
-const SEPARATION_LOGS = gql`
-  subscription SeparationLogs($filename: String!) {
-    separationLogs(filename: $filename)
   }
 `;
 
@@ -247,31 +240,17 @@ export default function App() {
                   ),
                 }));
                 setLogs((p) => ({ ...p, [f.filename]: "Starting separation..." }));
-
-                const observable = client.subscribe({
-                  query: SEPARATION_LOGS,
-                  variables: { filename: f.filename },
-                });
-
-                observable.subscribe({
-                  next({ data }) {
-                    const line = data?.separationLogs || "";
-                    setLogs((p) => ({
-                      ...p,
-                      [f.filename]: (p[f.filename] || "") + line,
-                    }));
-                  },
-                  complete() {
-                    setQueue((p) => ({ ...p, [f.filename]: false }));
-                    setExpanded((p) => ({ ...p, [f.filename]: true }));
-                  },
-                });
-
                 separateStems({
                   variables: { filename: f.filename, model: "htdemucs" },
-                }).catch(() =>
-                  setQueue((p) => ({ ...p, [f.filename]: false }))
-                );
+                })
+                  .then(({ data }) => {
+                    const text = data?.separateStems?.logs || "";
+                    setLogs((p) => ({ ...p, [f.filename]: text }));
+                    setExpanded((p) => ({ ...p, [f.filename]: true }));
+                  })
+                  .finally(() =>
+                    setQueue((p) => ({ ...p, [f.filename]: false }))
+                  );
               };
               const stemsToShow = stems.filter((s: any) => {
                 const d = desired[f.filename];
