@@ -33,7 +33,7 @@ if ($forceCuda) {
 if ($gpu) {
     Write-Host "GPU detected - installing CUDA build of torch"
     # Force reinstall to ensure the CUDA-enabled build replaces any CPU-only version
-    python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 } else {
     Write-Host "No GPU detected - installing CPU build of torch"
     python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
