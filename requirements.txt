@@ -7,6 +7,3 @@ ariadne-django>=0.3
 yt-dlp>=2024.4.0
 daphne>=4
 demucs>=4
-torch
-torchaudio
-torchvision
