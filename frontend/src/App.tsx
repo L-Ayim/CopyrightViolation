@@ -1,7 +1,7 @@
 // src/App.tsx
 
 import { gql, useSubscription } from "@apollo/client";
-import EmbedPage from "./EmbedPage";
+import SearchPage from "./SearchPage";
 import LoadingBar from "./LoadingBar";
 import { Routes, Route } from "react-router-dom";
 
@@ -47,7 +47,7 @@ export default function App() {
       </div>
 
       <Routes>
-        <Route path="/" element={<EmbedPage />} />
+        <Route path="/" element={<SearchPage />} />
       </Routes>
     </div>
   );
