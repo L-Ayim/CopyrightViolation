@@ -268,19 +268,21 @@ export default function App() {
                         <span className="text-yellow-400 font-semibold">
                           {f.title} (Audio)
                         </span>
-                        <button
-                          onClick={() =>
-                            setExpanded((p) => ({
-                              ...p,
-                              [f.filename]: !isExpanded,
-                            }))
-                          }
-                          className="text-yellow-400"
-                        >
-                          <FaChevronDown
-                            className={isExpanded ? "transform rotate-180" : ""}
-                          />
-                        </button>
+                        {stems.length > 0 && (
+                          <button
+                            onClick={() =>
+                              setExpanded((p) => ({
+                                ...p,
+                                [f.filename]: !isExpanded,
+                              }))
+                            }
+                            className="text-yellow-400"
+                          >
+                            <FaChevronDown
+                              className={isExpanded ? "transform rotate-180" : ""}
+                            />
+                          </button>
+                        )}
                       </div>
                       <div className="flex mt-2 space-x-2 self-end">
                         <a
