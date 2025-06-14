@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { gql, useQuery, useMutation } from "@apollo/client";
+import { FaChevronDown } from "react-icons/fa";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -49,6 +50,8 @@ const SEPARATE_STEMS = gql`
   }
 `;
 
+const AVAILABLE_STEMS = ["bass", "drums", "guitar", "other", "piano", "vocals"];
+
 function extractVideoId(url: string): string | null {
   try {
     const p = new URL(url);
@@ -94,6 +97,9 @@ export default function App() {
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [choosing, setChoosing] = useState<Record<string, boolean>>({});
+  const [desired, setDesired] = useState<Record<string, Record<string, boolean>>>({});
   const [search, setSearch] = useState("");
 
   const searchTerm = search.trim().toLowerCase();
@@ -214,6 +220,36 @@ export default function App() {
                 });
               };
 
+              const isExpanded = !!expanded[f.filename];
+              const isChoosing = !!choosing[f.filename];
+              const desiredSel = desired[f.filename] || {};
+              const toggleDesired = (name: string) => {
+                setDesired((p) => ({
+                  ...p,
+                  [f.filename]: { ...desiredSel, [name]: !desiredSel[name] },
+                }));
+              };
+              const startSeparation = () => {
+                setQueue((p) => ({ ...p, [f.filename]: true }));
+                setChoosing((p) => ({ ...p, [f.filename]: false }));
+                setDesired((p) => ({
+                  ...p,
+                  [f.filename]: Object.fromEntries(
+                    Object.entries(desiredSel).filter(([, v]) => v)
+                  ),
+                }));
+                separateStems({
+                  variables: { filename: f.filename, model: "htdemucs" },
+                }).finally(() =>
+                  setQueue((p) => ({ ...p, [f.filename]: false }))
+                );
+              };
+              const stemsToShow = stems.filter((s: any) => {
+                const d = desired[f.filename];
+                if (!d || Object.keys(d).length === 0) return true;
+                return d[s.name];
+              });
+
               return (
                 <div
                   key={f.filename}
@@ -228,38 +264,75 @@ export default function App() {
                       />
                     )}
                     <div className="flex-1 p-2 flex flex-col justify-between">
-                      <span className="text-yellow-400 font-semibold">
-                        {f.title} (Audio)
-                      </span>
-                      <a
-                        href={f.url}
-                        download={saveName}
-                        className="mt-2 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 self-end"
-                      >
-                        Download
-                      </a>
-                      <button
-                        onClick={() => {
-                          setQueue((p) => ({ ...p, [f.filename]: true }));
-                          separateStems({
-                            variables: { filename: f.filename, model: "htdemucs" },
-                          }).finally(() =>
-                            setQueue((p) => ({ ...p, [f.filename]: false }))
-                          );
-                        }}
-                        disabled={inQueue}
-                        className="mt-2 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 self-end disabled:opacity-50"
-                      >
-                        {inQueue ? "Separating..." : "Separate"}
-                      </button>
+                      <div className="flex items-center justify-between">
+                        <span className="text-yellow-400 font-semibold">
+                          {f.title} (Audio)
+                        </span>
+                        <button
+                          onClick={() =>
+                            setExpanded((p) => ({
+                              ...p,
+                              [f.filename]: !isExpanded,
+                            }))
+                          }
+                          className="text-yellow-400"
+                        >
+                          <FaChevronDown
+                            className={isExpanded ? "transform rotate-180" : ""}
+                          />
+                        </button>
+                      </div>
+                      <div className="flex mt-2 space-x-2 self-end">
+                        <a
+                          href={f.url}
+                          download={saveName}
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
+                        >
+                          Download
+                        </a>
+                        <button
+                          onClick={() =>
+                            setChoosing((p) => ({
+                              ...p,
+                              [f.filename]: !isChoosing,
+                            }))
+                          }
+                          disabled={inQueue}
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
+                        >
+                          {inQueue ? "Separating..." : "Separate"}
+                        </button>
+                      </div>
                       {inQueue && (
                         <div className="h-2 bg-yellow-400 animate-pulse mt-1" />
                       )}
                     </div>
                   </div>
-                  {stems.length > 0 && (
+                  {isChoosing && (
                     <div className="p-2 flex flex-col space-y-1">
-                      {stems.map((s: any) => (
+                      {AVAILABLE_STEMS.map((name) => (
+                        <label key={name} className="inline-flex items-center space-x-1">
+                          <input
+                            type="checkbox"
+                            checked={!!desiredSel[name]}
+                            onChange={() => toggleDesired(name)}
+                            className="accent-yellow-400"
+                          />
+                          <span className="text-yellow-400 text-sm">{name}</span>
+                        </label>
+                      ))}
+                      <button
+                        onClick={startSeparation}
+                        disabled={inQueue}
+                        className="mt-1 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded self-start disabled:opacity-50"
+                      >
+                        {inQueue ? "Separating..." : "Start Separation"}
+                      </button>
+                    </div>
+                  )}
+                  {isExpanded && stemsToShow.length > 0 && (
+                    <div className="p-2 flex flex-col space-y-1">
+                      {stemsToShow.map((s: any) => (
                         <label key={s.name} className="inline-flex items-center space-x-1">
                           <input
                             type="checkbox"
@@ -267,7 +340,9 @@ export default function App() {
                             onChange={() => toggle(s.name)}
                             className="accent-yellow-400"
                           />
-                          <span className="text-yellow-400 text-sm">{s.name}</span>
+                          <span className="text-yellow-400 text-sm">
+                            {`${f.title}_${s.name}`}
+                          </span>
                         </label>
                       ))}
                       {Object.values(sel).some(Boolean) && (
