@@ -5,6 +5,7 @@ interface Props {
   onSelect?: (site: string) => void;
 }
 import { gql, useQuery } from "@apollo/client";
+import LoadingBar from "./LoadingBar";
 
 const SUPPORTED_SITES = gql`
   query SupportedSites {
@@ -15,7 +16,7 @@ const SUPPORTED_SITES = gql`
 export default function SiteList({ onSelect }: Props) {
   const { data, loading, error } = useQuery(SUPPORTED_SITES);
 
-  if (loading) return <p className="text-yellow-400">Loading…</p>;
+  if (loading) return <LoadingBar />;
   if (error)   return <p className="text-yellow-400">Error: {error.message}</p>;
 
   return (
