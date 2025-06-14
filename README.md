@@ -4,7 +4,7 @@ This project provides a small Django backend and React frontend for downloading 
 
 ## Setup
 
-On Windows, use `start-copyright.ps1` to create a virtual environment and install dependencies. This script detects whether an NVIDIA GPU is present using `nvidia-smi` and installs the CUDA-enabled build of PyTorch when available.
+On Windows, use `start-copyright.ps1` to create a virtual environment and install dependencies. This script detects whether an NVIDIA GPU is present using `nvidia-smi` and installs the CUDA-enabled build of PyTorch when available. Set the environment variable `FORCE_CUDA=1` before running the script to force GPU packages, or `FORCE_CPU=1` to force the CPU build.
 
 If you set up the environment manually, be sure to install the appropriate PyTorch build. For GPU acceleration, run:
 
@@ -31,3 +31,4 @@ PY
 ```
 
 If this prints `CUDA available: True`, the separation process will run on the GPU.
+If you have a capable GPU but it isn't detected automatically, ensure `nvidia-smi` is installed and in your `PATH`. You can also force installation of the CUDA build by setting `FORCE_CUDA=1` when running the startup script.
