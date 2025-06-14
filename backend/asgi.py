@@ -3,6 +3,10 @@
 import os
 import sys
 import asyncio
+
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 import django
 
 from django.core.asgi import get_asgi_application
