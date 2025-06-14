@@ -232,9 +232,9 @@ export default function App() {
                           );
                         }}
                         disabled={inQueue}
-                        className="mt-2 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded disabled:opacity-50"
+                        className="mt-2 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 self-end disabled:opacity-50"
                       >
-                        {inQueue ? "Separating..." : "Separate Stems"}
+                        {inQueue ? "Separating..." : "Separate"}
                       </button>
                       {inQueue && (
                         <div className="h-2 bg-yellow-400 animate-pulse mt-1" />
