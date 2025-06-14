@@ -10,6 +10,10 @@ const GET_DOWNLOADS = gql`
       type
       title
       thumbnail
+      stems {
+        name
+        url
+      }
     }
   }
 `;
@@ -30,6 +34,15 @@ const DOWNLOAD_VIDEO = gql`
       success
       downloadUrl
       message
+    }
+  }
+`;
+
+const SEPARATE_STEMS = gql`
+  mutation SeparateStems($filename: String!, $model: String!) {
+    separateStems(filename: $filename, model: $model) {
+      success
+      logs
     }
   }
 `;
@@ -70,6 +83,15 @@ export default function App() {
       },
     }
   );
+
+  const [separateStems, { loading: sepLoading }] = useMutation(SEPARATE_STEMS, {
+    onCompleted() {
+      refetch();
+    },
+  });
+
+  const [queue, setQueue] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
 
   useEffect(() => {
     setVideoId(extractVideoId(url));
@@ -153,30 +175,95 @@ export default function App() {
             .map((f: any) => {
               const ext = f.filename.slice(f.filename.lastIndexOf("."));
               const saveName = `${f.title} (Audio)${ext}`;
+              const inQueue = queue[f.filename];
+              const stems = f.stems || [];
+              const sel = selected[f.filename] || {};
+              const toggle = (name: string) => {
+                setSelected((p) => ({
+                  ...p,
+                  [f.filename]: { ...sel, [name]: !sel[name] },
+                }));
+              };
+              const downloadSelected = () => {
+                Object.entries(sel).forEach(([name, v]) => {
+                  if (v) {
+                    const stem = stems.find((s: any) => s.name === name);
+                    if (stem) {
+                      const a = document.createElement("a");
+                      a.href = stem.url;
+                      a.download = `${f.title} (${name}).wav`;
+                      a.click();
+                    }
+                  }
+                });
+              };
+
               return (
                 <div
                   key={f.filename}
-                  className="bg-black border border-yellow-400 rounded-lg overflow-hidden flex"
+                  className="bg-black border border-yellow-400 rounded-lg overflow-hidden flex flex-col"
                 >
-                  {f.thumbnail && (
-                    <img
-                      src={f.thumbnail}
-                      alt=""
-                      className="w-20 h-20 object-contain"
-                    />
-                  )}
-                  <div className="flex-1 p-2 flex flex-col justify-between">
-                    <span className="text-yellow-400 font-semibold">
-                      {f.title} (Audio)
-                    </span>
-                    <a
-                      href={f.url}
-                      download={saveName}
-                      className="mt-2 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 self-end"
-                    >
-                      Download
-                    </a>
+                  <div className="flex">
+                    {f.thumbnail && (
+                      <img
+                        src={f.thumbnail}
+                        alt=""
+                        className="w-20 h-20 object-contain"
+                      />
+                    )}
+                    <div className="flex-1 p-2 flex flex-col justify-between">
+                      <span className="text-yellow-400 font-semibold">
+                        {f.title} (Audio)
+                      </span>
+                      <a
+                        href={f.url}
+                        download={saveName}
+                        className="mt-2 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 self-end"
+                      >
+                        Download
+                      </a>
+                      <button
+                        onClick={() => {
+                          setQueue((p) => ({ ...p, [f.filename]: true }));
+                          separateStems({
+                            variables: { filename: f.filename, model: "htdemucs" },
+                          }).finally(() =>
+                            setQueue((p) => ({ ...p, [f.filename]: false }))
+                          );
+                        }}
+                        disabled={inQueue}
+                        className="mt-2 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded disabled:opacity-50"
+                      >
+                        {inQueue ? "Separating..." : "Separate Stems"}
+                      </button>
+                      {inQueue && (
+                        <div className="h-2 bg-yellow-400 animate-pulse mt-1" />
+                      )}
+                    </div>
                   </div>
+                  {stems.length > 0 && (
+                    <div className="p-2 flex flex-col space-y-1">
+                      {stems.map((s: any) => (
+                        <label key={s.name} className="inline-flex items-center space-x-1">
+                          <input
+                            type="checkbox"
+                            checked={!!sel[s.name]}
+                            onChange={() => toggle(s.name)}
+                            className="accent-yellow-400"
+                          />
+                          <span className="text-yellow-400 text-sm">{s.name}</span>
+                        </label>
+                      ))}
+                      {Object.values(sel).some(Boolean) && (
+                        <button
+                          onClick={downloadSelected}
+                          className="mt-1 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded self-start"
+                        >
+                          Download Selected
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
