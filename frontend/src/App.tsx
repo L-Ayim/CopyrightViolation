@@ -298,9 +298,20 @@ export default function App() {
                             }))
                           }
                           disabled={inQueue}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
+                          className="flex items-center bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
-                          {inQueue ? "Separating..." : "Separate"}
+                          {inQueue ? (
+                            "Separating..."
+                          ) : (
+                            <>
+                              <span>Separate</span>
+                              <FaChevronDown
+                                className={
+                                  isChoosing ? "ml-1 transform rotate-180" : "ml-1"
+                                }
+                              />
+                            </>
+                          )}
                         </button>
                       </div>
                       {inQueue && (
@@ -316,7 +327,7 @@ export default function App() {
                             type="checkbox"
                             checked={!!desiredSel[name]}
                             onChange={() => toggleDesired(name)}
-                            className="bg-yellow-400 border-yellow-400 rounded accent-black"
+                            className="yellow-checkbox"
                           />
                           <span className="text-yellow-400 text-sm">{name}</span>
                         </label>
@@ -338,7 +349,7 @@ export default function App() {
                             type="checkbox"
                             checked={!!sel[s.name]}
                             onChange={() => toggle(s.name)}
-                            className="bg-yellow-400 border-yellow-400 rounded accent-black"
+                            className="yellow-checkbox"
                           />
                           <span className="text-yellow-400 text-sm">
                             {`${f.title}_${s.name}`}
