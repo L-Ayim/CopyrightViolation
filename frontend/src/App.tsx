@@ -67,8 +67,6 @@ export default function App() {
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [choosing, setChoosing] = useState<Record<string, boolean>>({});
-  const [desired, setDesired] = useState<Record<string, Record<string, boolean>>>({});
   const [logs, setLogs] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const globalLogsRef = useRef<HTMLDivElement>(null);
@@ -100,7 +98,6 @@ export default function App() {
         complete() {
           setDownloading(false);
           setGlobalLogs((p) => p + "\nDownload complete\n");
-          setTimeout(() => setGlobalLogs(""), 5000);
           refetch();
         },
       });
@@ -119,7 +116,6 @@ export default function App() {
         complete() {
           setDownloading(false);
           setGlobalLogs((p) => p + "\nDownload complete\n");
-          setTimeout(() => setGlobalLogs(""), 5000);
           refetch();
         },
       });
@@ -236,26 +232,8 @@ export default function App() {
               };
 
               const isExpanded = !!expanded[f.filename];
-              const isChoosing = !!choosing[f.filename];
-              const desiredSel = desired[f.filename] || {};
-              const toggleDesired = (name: string) => {
-                setDesired((p) => ({
-                  ...p,
-                  [f.filename]: { ...desiredSel, [name]: !desiredSel[name] },
-                }));
-              };
               const startSeparation = () => {
-                const selectedStems = Object.entries(desiredSel)
-                  .filter(([, v]) => v)
-                  .map(([n]) => n);
                 setQueue((p) => ({ ...p, [f.filename]: true }));
-                setChoosing((p) => ({ ...p, [f.filename]: false }));
-                setDesired((p) => ({
-                  ...p,
-                  [f.filename]: Object.fromEntries(
-                    Object.entries(desiredSel).filter(([, v]) => v)
-                  ),
-                }));
                 setLogs((p) => ({ ...p, [f.filename]: "" }));
                 client
                   .subscribe({
@@ -263,7 +241,7 @@ export default function App() {
                     variables: {
                       filename: f.filename,
                       model: "htdemucs_6s",
-                      stems: selectedStems,
+                      stems: AVAILABLE_STEMS,
                     },
                   })
                   .subscribe({
@@ -281,11 +259,7 @@ export default function App() {
                     },
                   });
               };
-              const stemsToShow = stems.filter((s: any) => {
-                const d = desired[f.filename];
-                if (!d || Object.keys(d).length === 0) return true;
-                return d[s.name];
-              });
+              const stemsToShow = stems;
 
               return (
                 <div
@@ -330,53 +304,15 @@ export default function App() {
                           Download
                         </a>
                         <button
-                          onClick={() =>
-                            setChoosing((p) => ({
-                              ...p,
-                              [f.filename]: !isChoosing,
-                            }))
-                          }
+                          onClick={startSeparation}
                           disabled={inQueue}
-                          className="flex items-center bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
-                          {inQueue ? (
-                            "Separating..."
-                          ) : (
-                            <>
-                              <span>Separate</span>
-                              <FaChevronDown
-                                className={
-                                  isChoosing ? "ml-1 transform rotate-180" : "ml-1"
-                                }
-                              />
-                            </>
-                          )}
+                          {inQueue ? "Separating..." : "Separate"}
                         </button>
                       </div>
                     </div>
                   </div>
-                  {isChoosing && (
-                    <div className="p-2 flex flex-col space-y-1">
-                      {AVAILABLE_STEMS.map((name) => (
-                        <label key={name} className="inline-flex items-center space-x-1">
-                          <input
-                            type="checkbox"
-                            checked={!!desiredSel[name]}
-                            onChange={() => toggleDesired(name)}
-                            className="yellow-checkbox"
-                          />
-                          <span className="text-yellow-400 text-sm">{name}</span>
-                        </label>
-                      ))}
-                      <button
-                        onClick={startSeparation}
-                        disabled={inQueue}
-                        className="mt-1 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded self-start disabled:opacity-50"
-                      >
-                        {inQueue ? "Separating..." : "Start Separation"}
-                      </button>
-                    </div>
-                  )}
                   {isExpanded && stemsToShow.length > 0 && (
                     <div className="p-2 flex flex-col space-y-1">
                       {stemsToShow.map((s: any) => (
