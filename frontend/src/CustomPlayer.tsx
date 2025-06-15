@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FaPause, FaPlay, FaRedo } from "react-icons/fa";
 
 export interface Stem {
   name: string;
@@ -93,8 +94,17 @@ export function CustomPlayer({
   const pauseAll = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
-    pauseOffsetRef.current = ctx.currentTime - startTimeRef.current;
-    Object.values(sourcesRef.current).forEach(({ src }) => src.stop());
+    pauseOffsetRef.current = Math.min(
+      ctx.currentTime - startTimeRef.current,
+      duration,
+    );
+    Object.values(sourcesRef.current).forEach(({ src }) => {
+      try {
+        src.stop();
+      } catch {
+        /* ignore */
+      }
+    });
     sourcesRef.current = {};
     setIsPlaying(false);
   };
@@ -122,8 +132,15 @@ export function CustomPlayer({
       if (ctx && isPlaying) {
         const t = ctx.currentTime - startTimeRef.current;
         setPlayed(t);
-        if (loop && t >= duration) {
-          seekTo(0);
+        if (t >= duration) {
+          if (loop) {
+            seekTo(0);
+          } else {
+            pauseOffsetRef.current = duration;
+            sourcesRef.current = {};
+            setIsPlaying(false);
+            setPlayed(duration);
+          }
         } else {
           raf = requestAnimationFrame(update);
         }
@@ -138,16 +155,18 @@ export function CustomPlayer({
       <div className="flex space-x-2">
         <button
           onClick={togglePlay}
-          className="flex-1 px-4 py-2 bg-yellow-400 text-black rounded font-bold"
+          className="flex-1 px-4 py-2 bg-yellow-400 text-black rounded font-bold flex items-center justify-center space-x-2"
         >
-          {isPlaying ? "❚❚ Pause" : "▶ Play"}
+          {isPlaying ? <FaPause /> : <FaPlay />}
+          <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
         </button>
         <button
           onClick={toggleLoop}
-          className={`px-4 py-2 bg-yellow-400 text-black rounded font-bold ${loop ? '' : 'opacity-50'}`}
+          className={`flex-1 px-4 py-2 bg-yellow-400 text-black rounded font-bold flex items-center justify-center ${loop ? '' : 'opacity-50'}`}
           title="Toggle Repeat"
         >
-          🔁
+          <FaRedo />
+          <span className="sr-only">Repeat</span>
         </button>
       </div>
 
@@ -158,7 +177,7 @@ export function CustomPlayer({
         value={played}
         onChange={(e) => seekTo(+e.target.value)}
         className="w-full h-2 rounded bg-black"
-        style={{ accentColor: "#facc15" }}
+        style={{ accentColor: loop ? "#facc15" : "#9ca3af" }}
       />
 
       <div className="text-sm text-center">
