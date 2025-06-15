@@ -23,6 +23,7 @@ export function CustomPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [played, setPlayed] = useState(0);
+  const [loop, setLoop] = useState(false);
 
   // Initialise AudioContext
   useEffect(() => {
@@ -103,6 +104,10 @@ export function CustomPlayer({
     else playAll();
   };
 
+  const toggleLoop = () => {
+    setLoop((p) => !p);
+  };
+
   const seekTo = (t: number) => {
     Object.values(sourcesRef.current).forEach(({ src }) => src.stop());
     sourcesRef.current = {};
@@ -115,22 +120,36 @@ export function CustomPlayer({
     const update = () => {
       const ctx = audioCtxRef.current;
       if (ctx && isPlaying) {
-        setPlayed(ctx.currentTime - startTimeRef.current);
-        raf = requestAnimationFrame(update);
+        const t = ctx.currentTime - startTimeRef.current;
+        setPlayed(t);
+        if (loop && t >= duration) {
+          seekTo(0);
+        } else {
+          raf = requestAnimationFrame(update);
+        }
       }
     };
     if (isPlaying) update();
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying]);
+  }, [isPlaying, loop, duration]);
 
   return (
     <div className="w-full max-w-lg bg-black text-yellow-400 border border-yellow-400 p-4 rounded-lg space-y-4">
-      <button
-        onClick={togglePlay}
-        className="w-full px-4 py-2 bg-yellow-400 text-black rounded font-bold"
-      >
-        {isPlaying ? "❚❚ Pause" : "▶ Play"}
-      </button>
+      <div className="flex space-x-2">
+        <button
+          onClick={togglePlay}
+          className="flex-1 px-4 py-2 bg-yellow-400 text-black rounded font-bold"
+        >
+          {isPlaying ? "❚❚ Pause" : "▶ Play"}
+        </button>
+        <button
+          onClick={toggleLoop}
+          className={`px-4 py-2 bg-yellow-400 text-black rounded font-bold ${loop ? '' : 'opacity-50'}`}
+          title="Toggle Repeat"
+        >
+          🔁
+        </button>
+      </div>
 
       <input
         type="range"
