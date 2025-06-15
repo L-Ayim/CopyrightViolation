@@ -157,21 +157,34 @@ def resolve_download_audio(_, __, url: str):
     out_filename = f"{vid}.mp3"
     out_path = MEDIA_DIR / out_filename
 
-    # fetch & save metadata
-    try:
-        raw = subprocess.run(
-            ["yt-dlp", "--dump-json", url],
-            capture_output=True, text=True
-        )
-        write_metadata(vid, json.loads(raw.stdout))
-    except Exception:
-        write_metadata(vid, {"title": vid, "thumbnail": None})
-
-    # perform download
+    # combined metadata fetch & download
     proc = subprocess.run(
-        ["yt-dlp", "-x", "--audio-format", "mp3", "-o", str(out_path), url],
-        capture_output=True, text=True
+        [
+            "yt-dlp",
+            "--print-json",
+            "--newline",
+            "-x",
+            "--audio-format",
+            "mp3",
+            "-o",
+            str(out_path),
+            url,
+        ],
+        capture_output=True,
+        text=True,
     )
+    info_json = None
+    for line in proc.stdout.splitlines():
+        if line.strip().startswith("{"):
+            info_json = line
+            break
+    if info_json:
+        try:
+            write_metadata(vid, json.loads(info_json))
+        except Exception:
+            write_metadata(vid, {"title": vid, "thumbnail": None})
+    else:
+        write_metadata(vid, {"title": vid, "thumbnail": None})
     message = proc.stdout + proc.stderr
     success = proc.returncode == 0
     rel_url = build_media_url(out_filename) if success else None
@@ -185,22 +198,35 @@ def resolve_download_video(_, __, url: str):
     out_filename = f"{vid}.mp4"
     out_path = MEDIA_DIR / out_filename
 
-    # fetch & save metadata
-    try:
-        raw = subprocess.run(
-            ["yt-dlp", "--dump-json", url],
-            capture_output=True, text=True
-        )
-        write_metadata(vid, json.loads(raw.stdout))
-    except Exception:
-        write_metadata(vid, {"title": vid, "thumbnail": None})
-
-    # perform download
+    # combined metadata fetch & download
     proc = subprocess.run(
-        ["yt-dlp", "-f", "bestvideo+bestaudio", "--merge-output-format", "mp4",
-         "-o", str(out_path), url],
-        capture_output=True, text=True
+        [
+            "yt-dlp",
+            "--print-json",
+            "--newline",
+            "-f",
+            "bestvideo+bestaudio",
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            str(out_path),
+            url,
+        ],
+        capture_output=True,
+        text=True,
     )
+    info_json = None
+    for line in proc.stdout.splitlines():
+        if line.strip().startswith("{"):
+            info_json = line
+            break
+    if info_json:
+        try:
+            write_metadata(vid, json.loads(info_json))
+        except Exception:
+            write_metadata(vid, {"title": vid, "thumbnail": None})
+    else:
+        write_metadata(vid, {"title": vid, "thumbnail": None})
     message = proc.stdout + proc.stderr
     success = proc.returncode == 0
     rel_url = build_media_url(out_filename) if success else None
@@ -254,18 +280,26 @@ async def stream_download_audio(_, info, url: str):
     vid = extract_video_id(url)
     out_filename = f"{vid}.mp3"
     out_path = MEDIA_DIR / out_filename
-    try:
-        raw = await asyncio.to_thread(
-            subprocess.run,
-            ["yt-dlp", "--dump-json", url],
-            capture_output=True,
-            text=True,
-        )
-        write_metadata(vid, json.loads(raw.stdout))
-    except Exception:
-        write_metadata(vid, {"title": vid, "thumbnail": None})
-    cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "-o", str(out_path), url]
+    cmd = [
+        "yt-dlp",
+        "--print-json",
+        "--newline",
+        "-x",
+        "--audio-format",
+        "mp3",
+        "-o",
+        str(out_path),
+        url,
+    ]
+    seen_info = False
     async for line in stream_process(cmd):
+        if not seen_info and line.strip().startswith("{"):
+            try:
+                write_metadata(vid, json.loads(line))
+                seen_info = True
+            except json.JSONDecodeError:
+                pass
+            continue
         yield line
 
 
@@ -279,18 +313,10 @@ async def stream_download_video(_, info, url: str):
     vid = extract_video_id(url)
     out_filename = f"{vid}.mp4"
     out_path = MEDIA_DIR / out_filename
-    try:
-        raw = await asyncio.to_thread(
-            subprocess.run,
-            ["yt-dlp", "--dump-json", url],
-            capture_output=True,
-            text=True,
-        )
-        write_metadata(vid, json.loads(raw.stdout))
-    except Exception:
-        write_metadata(vid, {"title": vid, "thumbnail": None})
     cmd = [
         "yt-dlp",
+        "--print-json",
+        "--newline",
         "-f",
         "bestvideo+bestaudio",
         "--merge-output-format",
@@ -299,7 +325,15 @@ async def stream_download_video(_, info, url: str):
         str(out_path),
         url,
     ]
+    seen_info = False
     async for line in stream_process(cmd):
+        if not seen_info and line.strip().startswith("{"):
+            try:
+                write_metadata(vid, json.loads(line))
+                seen_info = True
+            except json.JSONDecodeError:
+                pass
+            continue
         yield line
 
 
