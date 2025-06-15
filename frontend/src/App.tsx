@@ -34,8 +34,12 @@ const DOWNLOAD_VIDEO_PROGRESS = gql`
 `;
 
 const SEPARATE_STEMS_PROGRESS = gql`
-  subscription SeparateStemsProgress($filename: String!, $model: String!) {
-    separateStemsProgress(filename: $filename, model: $model)
+  subscription SeparateStemsProgress(
+    $filename: String!
+    $model: String!
+    $stems: [String!]!
+  ) {
+    separateStemsProgress(filename: $filename, model: $model, stems: $stems)
   }
 `;
 
@@ -241,6 +245,9 @@ export default function App() {
                 }));
               };
               const startSeparation = () => {
+                const selectedStems = Object.entries(desiredSel)
+                  .filter(([, v]) => v)
+                  .map(([n]) => n);
                 setQueue((p) => ({ ...p, [f.filename]: true }));
                 setChoosing((p) => ({ ...p, [f.filename]: false }));
                 setDesired((p) => ({
@@ -253,7 +260,11 @@ export default function App() {
                 client
                   .subscribe({
                     query: SEPARATE_STEMS_PROGRESS,
-                    variables: { filename: f.filename, model: "htdemucs_6s" },
+                    variables: {
+                      filename: f.filename,
+                      model: "htdemucs_6s",
+                      stems: selectedStems,
+                    },
                   })
                   .subscribe({
                     next({ data }) {
