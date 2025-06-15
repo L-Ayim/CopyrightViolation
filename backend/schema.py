@@ -133,9 +133,9 @@ async def stream_process(cmd: list[str]):
 @query.field("downloads")
 def resolve_downloads(_, __):
     items = []
-    for f in sorted(MEDIA_DIR.iterdir()):
-        if not f.is_file():
-            continue
+    files = [f for f in MEDIA_DIR.iterdir() if f.is_file()]
+    files.sort(key=lambda p: p.stat().st_mtime)
+    for f in files:
         ext = f.suffix.lower()
         if ext == ".mp3":
             typ = "audio"
