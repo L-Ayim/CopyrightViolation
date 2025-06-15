@@ -102,6 +102,17 @@ export default function App() {
     localStorage.setItem("stickyHeader", JSON.stringify(stickyHeader));
   }, [stickyHeader]);
 
+  const lastTouchRef = useRef(0);
+  const handleTouchStart = () => {
+    const now = Date.now();
+    if (now - lastTouchRef.current < 300) {
+      setStickyHeader((p) => !p);
+      lastTouchRef.current = 0;
+    } else {
+      lastTouchRef.current = now;
+    }
+  };
+
 
   const anyLoading = downloading;
 
@@ -160,7 +171,9 @@ export default function App() {
   return (
     <>
       <header
-        className={`w-full bg-black flex flex-col items-center p-4 space-y-2 ${stickyHeader ? "sticky top-0 z-10" : ""}`}
+        onDoubleClick={() => setStickyHeader((p) => !p)}
+        onTouchStart={handleTouchStart}
+        className={`w-full bg-black flex flex-col items-center p-4 space-y-2 ${stickyHeader ? "sticky top-0 z-10 ring-2 ring-yellow-400" : ""}`}
       >
         <div
           className="bg-yellow-400 flex items-center justify-center"
@@ -171,15 +184,7 @@ export default function App() {
         <h1 className="text-3xl sm:text-4xl text-yellow-400 font-extrabold text-center">
           Copyright <span className="text-black bg-yellow-400 px-2">Violation</span>
         </h1>
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={stickyHeader}
-            onChange={(e) => setStickyHeader(e.target.checked)}
-            className="text-yellow-400 bg-black border-yellow-400 rounded"
-          />
-          <span className="text-yellow-400 text-sm">Sticky Header</span>
-        </label>
+        
       </header>
 
       <main className="min-h-screen bg-black flex flex-col items-center p-4 sm:p-6 space-y-8 sm:space-y-12">
