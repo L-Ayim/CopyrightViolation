@@ -86,7 +86,7 @@ export default function App() {
   const startDownloadAudio = () => {
     if (!videoId) return;
     setDownloading(true);
-    setGlobalLogs("");
+    setGlobalLogs("Starting download...\n");
     client
       .subscribe({ query: DOWNLOAD_AUDIO_PROGRESS, variables: { url } })
       .subscribe({
@@ -95,7 +95,8 @@ export default function App() {
         },
         complete() {
           setDownloading(false);
-          setGlobalLogs("");
+          setGlobalLogs((p) => p + "\nDownload complete\n");
+          setTimeout(() => setGlobalLogs(""), 5000);
           refetch();
         },
       });
@@ -104,7 +105,7 @@ export default function App() {
   const startDownloadVideo = () => {
     if (!videoId) return;
     setDownloading(true);
-    setGlobalLogs("");
+    setGlobalLogs("Starting download...\n");
     client
       .subscribe({ query: DOWNLOAD_VIDEO_PROGRESS, variables: { url } })
       .subscribe({
@@ -113,7 +114,8 @@ export default function App() {
         },
         complete() {
           setDownloading(false);
-          setGlobalLogs("");
+          setGlobalLogs((p) => p + "\nDownload complete\n");
+          setTimeout(() => setGlobalLogs(""), 5000);
           refetch();
         },
       });
@@ -251,7 +253,7 @@ export default function App() {
                 client
                   .subscribe({
                     query: SEPARATE_STEMS_PROGRESS,
-                    variables: { filename: f.filename, model: "htdemucs" },
+                    variables: { filename: f.filename, model: "htdemucs_6s" },
                   })
                   .subscribe({
                     next({ data }) {
