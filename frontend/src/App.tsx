@@ -6,7 +6,7 @@ import {
   FaMicrophone,
   FaQuestionCircle,
 } from "react-icons/fa";
-import { GiDrumKit, GiGuitarBass, GiPianoKeys } from "react-icons/gi";
+import { GiDrumKit, GiGuitarBassHead, GiPianoKeys } from "react-icons/gi";
 import type { IconType } from "react-icons";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -53,7 +53,7 @@ const SEPARATE_STEMS_PROGRESS = gql`
 const AVAILABLE_STEMS = ["bass", "drums", "guitar", "other", "piano", "vocals"];
 
 const STEM_DETAILS: Record<string, { label: string; Icon: IconType }> = {
-  bass: { label: "Bass", Icon: GiGuitarBass },
+  bass: { label: "Bass", Icon: GiGuitarBassHead },
   drums: { label: "Drums", Icon: GiDrumKit },
   guitar: { label: "Guitar", Icon: FaGuitar },
   other: { label: "Other", Icon: FaQuestionCircle },
