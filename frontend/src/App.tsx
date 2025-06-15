@@ -164,9 +164,6 @@ export default function App() {
               Download Video
             </button>
           </div>
-          {anyLoading && (
-            <div className="w-full h-2 bg-yellow-400 animate-pulse mt-2" />
-          )}
           {globalLogs && (
             <div className="mt-2 p-2 bg-black border border-yellow-400 rounded overflow-auto max-h-40">
               <pre className="text-yellow-400 text-xs whitespace-pre-wrap">
@@ -330,9 +327,6 @@ export default function App() {
                           )}
                         </button>
                       </div>
-                      {inQueue && (
-                        <div className="h-2 bg-yellow-400 animate-pulse mt-1" />
-                      )}
                     </div>
                   </div>
                   {isChoosing && (
