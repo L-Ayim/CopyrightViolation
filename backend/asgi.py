@@ -11,6 +11,7 @@ from django.urls import re_path
 from ariadne.asgi import GraphQL
 from ariadne.asgi.handlers import GraphQLTransportWSHandler
 
+# Import GraphQL schema with subscriptions enabled
 from .schema import schema
 
 # Tell Django where to find settings and bootstrap
