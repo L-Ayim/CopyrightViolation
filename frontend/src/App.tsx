@@ -199,13 +199,15 @@ export default function App() {
         />
       </div>
 
-      {/* Downloaded Items: audio left, video right */}
-      <div className="w-full max-w-4xl flex flex-col md:flex-row gap-6">
-        {/* Audio Column */}
-        <div className="flex-1 space-y-4">
-          {dlData?.downloads
-            .filter((f: any) => f.type === "audio" && f.title.toLowerCase().includes(searchTerm))
-            .map((f: any) => {
+      {/* Downloaded Items */}
+      <div className="w-full max-w-4xl flex flex-col gap-6">
+        {(dlData?.downloads || [])
+          .filter((f: any) => {
+            const typeLabel = f.type.charAt(0).toUpperCase() + f.type.slice(1);
+            return `${f.title} (${typeLabel})`.toLowerCase().includes(searchTerm);
+          })
+          .map((f: any) => {
+            if (f.type === "audio") {
               const ext = f.filename.slice(f.filename.lastIndexOf("."));
               const saveName = `${f.title} (Audio)${ext}`;
               const inQueue = queue[f.filename];
@@ -347,14 +349,7 @@ export default function App() {
                   )}
                 </div>
               );
-            })}
-        </div>
-
-        {/* Video Column */}
-        <div className="flex-1 space-y-4">
-          {dlData?.downloads
-            .filter((f: any) => f.type === "video" && f.title.toLowerCase().includes(searchTerm))
-            .map((f: any) => {
+            } else {
               const ext = f.filename.slice(f.filename.lastIndexOf("."));
               const saveName = `${f.title} (Video)${ext}`;
               return (
@@ -383,8 +378,9 @@ export default function App() {
                   </div>
                 </div>
               );
-            })}
+              });
         </div>
+
       </div>
     </div>
   );
