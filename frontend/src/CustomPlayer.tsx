@@ -8,9 +8,11 @@ export interface Stem {
 export function CustomPlayer({
   stems,
   selected,
+  preloaded = {},
 }: {
   stems: Stem[];
   selected: string[];
+  preloaded?: Record<string, AudioBuffer>;
 }) {
   const audioCtxRef = useRef<AudioContext>();
   const buffersRef = useRef<Record<string, AudioBuffer>>({});
@@ -29,6 +31,20 @@ export function CustomPlayer({
       audioCtxRef.current?.close();
     };
   }, []);
+
+  // Merge preloaded buffers on mount
+  useEffect(() => {
+    if (Object.keys(preloaded).length) {
+      buffersRef.current = { ...buffersRef.current, ...preloaded };
+      const maxDur = Math.max(
+        0,
+        ...Object.values(preloaded).map((b) => b.duration)
+      );
+      if (maxDur > 0) {
+        setDuration((d) => Math.max(d, maxDur));
+      }
+    }
+  }, [preloaded]);
 
   // Load buffers when a stem is first selected
   useEffect(() => {
@@ -115,6 +131,7 @@ export function CustomPlayer({
         max={duration}
         value={played}
         onChange={(e) => seekTo(+e.target.value)}
+        style={{ accentColor: "black" }}
         className="w-full"
       />
 

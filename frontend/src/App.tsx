@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { CustomPlayer } from "./CustomPlayer";
+import { useState, useEffect, useRef } from "react";
+import { CustomPlayer, type Stem } from "./CustomPlayer";
 import { gql, useQuery, useApolloClient } from "@apollo/client";
 import {
   FaChevronDown,
@@ -85,6 +85,8 @@ export default function App() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showPlayers, setShowPlayers] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState("");
+  const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
+  const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
 
   const searchTerm = search.trim().toLowerCase();
 
@@ -125,6 +127,26 @@ export default function App() {
           refetch();
         },
       });
+  };
+
+  const preloadStems = async (file: string, stems: Stem[]) => {
+    if (buffersRef.current[file]) return;
+    setLoadingStems((p) => ({ ...p, [file]: true }));
+    const ctx = new AudioContext();
+    const buffers: Record<string, AudioBuffer> = {};
+    await Promise.all(
+      stems.map((s) =>
+        fetch(s.url)
+          .then((r) => r.arrayBuffer())
+          .then((b) => ctx.decodeAudioData(b))
+          .then((buf) => {
+            buffers[s.name] = buf;
+          })
+      )
+    );
+    ctx.close();
+    buffersRef.current[file] = buffers;
+    setLoadingStems((p) => ({ ...p, [file]: false }));
   };
 
   return (
@@ -284,12 +306,16 @@ export default function App() {
                         </span>
                         {stems.length > 0 && (
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              const willExpand = !isExpanded;
                               setExpanded((p) => ({
                                 ...p,
-                                [f.filename]: !isExpanded,
-                              }))
-                            }
+                                [f.filename]: willExpand,
+                              }));
+                              if (willExpand) {
+                                preloadStems(f.filename, stemsToShow);
+                              }
+                            }}
                             className="text-yellow-400"
                           >
                             <FaChevronDown
@@ -318,47 +344,54 @@ export default function App() {
                   </div>
                   {isExpanded && stemsToShow.length > 0 && (
                     <div className="p-2 flex flex-col space-y-2">
-                      <div className="grid grid-cols-3 gap-2">
-                        {stemsToShow.map((s: any) => {
-                          const detail = STEM_DETAILS[s.name] || {
-                            label: s.name,
-                            Icon: FaQuestionCircle,
-                          };
-                          const Icon = detail.Icon;
-                          const selectedStem = !!sel[s.name];
-                          return (
-                            <button
-                              key={s.name}
-                              onClick={() => toggle(s.name)}
-                              className={`border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 ${selectedStem ? "bg-yellow-400 text-black" : "text-yellow-400"}`}
-                            >
-                              <Icon className="w-6 h-6" />
-                              <span className="text-xs font-semibold">{detail.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {Object.values(sel).some(Boolean) && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={downloadSelected}
-                            className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
-                          >
-                            Download Selected
-                          </button>
-                          <button
-                            onClick={togglePlayers}
-                            className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
-                          >
-                            {isShowingPlayers ? "Hide Players" : "Play Selected"}
-                          </button>
-                        </div>
-                      )}
-                      {isShowingPlayers && (
-                        <CustomPlayer
-                          stems={stemsToShow}
-                          selected={Object.keys(sel).filter((k) => sel[k])}
-                        />
+                      {loadingStems[f.filename] ? (
+                        <div className="w-full h-2 bg-yellow-400 animate-pulse rounded" />
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-3 gap-2">
+                            {stemsToShow.map((s: any) => {
+                              const detail = STEM_DETAILS[s.name] || {
+                                label: s.name,
+                                Icon: FaQuestionCircle,
+                              };
+                              const Icon = detail.Icon;
+                              const selectedStem = !!sel[s.name];
+                              return (
+                                <button
+                                  key={s.name}
+                                  onClick={() => toggle(s.name)}
+                                  className={`border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 ${selectedStem ? "bg-yellow-400 text-black" : "text-yellow-400"}`}
+                                >
+                                  <Icon className="w-6 h-6" />
+                                  <span className="text-xs font-semibold">{detail.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {Object.values(sel).some(Boolean) && (
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={downloadSelected}
+                                className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
+                              >
+                                Download Selected
+                              </button>
+                              <button
+                                onClick={togglePlayers}
+                                className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
+                              >
+                                {isShowingPlayers ? "Hide Players" : "Play Selected"}
+                              </button>
+                            </div>
+                          )}
+                          {isShowingPlayers && (
+                            <CustomPlayer
+                              stems={stemsToShow}
+                              selected={Object.keys(sel).filter((k) => sel[k])}
+                              preloaded={buffersRef.current[f.filename] || {}}
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                   )}
