@@ -162,7 +162,7 @@ export function CustomPlayer({
         </button>
         <button
           onClick={toggleLoop}
-          className={`flex-1 px-4 py-2 bg-yellow-400 text-black rounded font-bold flex items-center justify-center ${loop ? '' : 'opacity-50'}`}
+          className={`flex-1 px-4 py-2 rounded font-bold flex items-center justify-center ${loop ? 'bg-yellow-400 text-black' : 'bg-black text-yellow-400'}`}
           title="Toggle Repeat"
         >
           <FaRedo />
@@ -177,7 +177,7 @@ export function CustomPlayer({
         value={played}
         onChange={(e) => seekTo(+e.target.value)}
         className="w-full h-2 rounded bg-black"
-        style={{ accentColor: loop ? "#facc15" : "#9ca3af" }}
+        style={{ accentColor: "#facc15" }}
       />
 
       <div className="text-sm text-center">
