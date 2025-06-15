@@ -82,6 +82,7 @@ export default function App() {
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showPlayers, setShowPlayers] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState("");
 
   const searchTerm = search.trim().toLowerCase();
@@ -231,6 +232,13 @@ export default function App() {
               };
 
               const isExpanded = !!expanded[f.filename];
+              const isShowingPlayers = !!showPlayers[f.filename];
+              const togglePlayers = () => {
+                setShowPlayers((p) => ({
+                  ...p,
+                  [f.filename]: !isShowingPlayers,
+                }));
+              };
               const startSeparation = () => {
                 setQueue((p) => ({ ...p, [f.filename]: true }));
                 client
@@ -330,12 +338,29 @@ export default function App() {
                         })}
                       </div>
                       {Object.values(sel).some(Boolean) && (
-                        <button
-                          onClick={downloadSelected}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded self-start"
-                        >
-                          Download Selected
-                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={downloadSelected}
+                            className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
+                          >
+                            Download Selected
+                          </button>
+                          <button
+                            onClick={togglePlayers}
+                            className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
+                          >
+                            {isShowingPlayers ? "Hide Players" : "Play Selected"}
+                          </button>
+                        </div>
+                      )}
+                      {isShowingPlayers && (
+                        <div className="flex flex-col space-y-2 mt-2">
+                          {stemsToShow.map((s: any) =>
+                            sel[s.name] ? (
+                              <audio key={s.name} controls src={s.url} className="w-full" />
+                            ) : null
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
