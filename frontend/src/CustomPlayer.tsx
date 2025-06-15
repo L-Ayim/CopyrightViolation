@@ -124,46 +124,25 @@ export function CustomPlayer({
   }, [isPlaying]);
 
   return (
-    <div className="w-full max-w-lg bg-yellow-400 text-black p-4 rounded-lg space-y-4">
+    <div className="w-full max-w-lg bg-black text-yellow-400 border border-yellow-400 p-4 rounded-lg space-y-4">
       <button
         onClick={togglePlay}
-        className="px-4 py-2 bg-black text-yellow-400 rounded font-bold"
+        className="w-full px-4 py-2 bg-yellow-400 text-black rounded font-bold"
       >
         {isPlaying ? "❚❚ Pause" : "▶ Play"}
       </button>
 
-      <div className="relative w-full">
-        {/* Invisible native range for interaction */}
-        <input
-          type="range"
-          min={0}
-          max={duration}
-          value={played}
-          onChange={(e) => seekTo(+e.target.value)}
-          className="absolute inset-0 w-full h-3 opacity-0 cursor-pointer"
-        />
+      <input
+        type="range"
+        min={0}
+        max={duration}
+        value={played}
+        onChange={(e) => seekTo(+e.target.value)}
+        className="w-full h-2 rounded bg-black"
+        style={{ accentColor: "#facc15" }}
+      />
 
-        {/* Track + Fill */}
-        <div className="h-3 bg-black rounded-full overflow-hidden">
-          <div
-            className="h-full bg-yellow-400 transition-all duration-150"
-            style={{ width: `${(duration ? (played / duration) * 100 : 0)}%` }}
-          />
-        </div>
-
-        {/* Modern circular thumb */}
-        <div
-          className="absolute w-6 h-6 rounded-full bg-black border-2 border-white shadow-lg"
-          style={{
-            left: `${(duration ? (played / duration) * 100 : 0)}%`,
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            pointerEvents: "none",
-          }}
-        />
-      </div>
-
-      <div className="text-sm">
+      <div className="text-sm text-center">
         {new Date(played * 1000).toISOString().substr(14, 5)} /{' '}
         {new Date(duration * 1000).toISOString().substr(14, 5)}
       </div>
