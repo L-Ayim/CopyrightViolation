@@ -132,15 +132,36 @@ export function CustomPlayer({
         {isPlaying ? "❚❚ Pause" : "▶ Play"}
       </button>
 
-      <input
-        type="range"
-        min={0}
-        max={duration}
-        value={played}
-        onChange={(e) => seekTo(+e.target.value)}
-        style={{ accentColor: "black" }}
-        className="w-full"
-      />
+      <div className="relative w-full">
+        {/* Invisible native range for interaction */}
+        <input
+          type="range"
+          min={0}
+          max={duration}
+          value={played}
+          onChange={(e) => seekTo(+e.target.value)}
+          className="absolute inset-0 w-full h-3 opacity-0 cursor-pointer"
+        />
+
+        {/* Track + Fill */}
+        <div className="h-3 bg-black rounded-full overflow-hidden">
+          <div
+            className="h-full bg-yellow-400 transition-all duration-150"
+            style={{ width: `${(duration ? (played / duration) * 100 : 0)}%` }}
+          />
+        </div>
+
+        {/* Modern circular thumb */}
+        <div
+          className="absolute w-6 h-6 rounded-full bg-black border-2 border-white shadow-lg"
+          style={{
+            left: `${(duration ? (played / duration) * 100 : 0)}%`,
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
 
       <div className="text-sm">
         {new Date(played * 1000).toISOString().substr(14, 5)} /{' '}
