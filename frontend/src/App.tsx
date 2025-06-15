@@ -151,18 +151,16 @@ export default function App() {
 
   return (
     <>
-      <header className="w-full bg-black flex items-center justify-center p-4">
-        <div className="inline-flex items-center">
-          <div
-            className="bg-yellow-400 flex items-center justify-center"
-            style={{ width: 64, height: 64 }}
-          >
-            <img src="/favicon.svg" alt="Logo" className="w-12 h-12" />
-          </div>
-          <h1 className="ml-4 text-3xl sm:text-4xl text-yellow-400 font-extrabold">
-            Copyright <span className="text-black bg-yellow-400 px-2">Violation</span>
-          </h1>
+      <header className="w-full bg-black flex flex-col items-center p-4 space-y-2">
+        <div
+          className="bg-yellow-400 flex items-center justify-center"
+          style={{ width: 64, height: 64 }}
+        >
+          <img src="/favicon.svg" alt="Logo" className="w-16 h-16" />
         </div>
+        <h1 className="text-3xl sm:text-4xl text-yellow-400 font-extrabold text-center">
+          Copyright <span className="text-black bg-yellow-400 px-2">Violation</span>
+        </h1>
       </header>
 
       <main className="min-h-screen bg-black flex flex-col items-center p-4 sm:p-6 space-y-8 sm:space-y-12">
