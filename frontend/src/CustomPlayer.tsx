@@ -132,15 +132,16 @@ export function CustomPlayer({
       if (ctx && isPlaying) {
         const t = ctx.currentTime - startTimeRef.current;
         setPlayed(t);
-        if (t >= duration) {
-          if (loop) {
-            seekTo(0);
-          } else {
-            pauseOffsetRef.current = duration;
-            sourcesRef.current = {};
-            setIsPlaying(false);
-            setPlayed(duration);
-          }
+          if (t >= duration) {
+            if (loop) {
+              seekTo(0);
+              raf = requestAnimationFrame(update);
+            } else {
+              pauseOffsetRef.current = duration;
+              sourcesRef.current = {};
+              setIsPlaying(false);
+              setPlayed(duration);
+            }
         } else {
           raf = requestAnimationFrame(update);
         }
