@@ -290,10 +290,11 @@ def resolve_separate_stems(_, __, filename: str, model: str, stems: list[str]):
     ]
     if stems:
         stems_lower = [s.lower() for s in stems]
-        if set(stems_lower) == {"vocals", "accompaniment"}:
+        unique = set(stems_lower)
+        if unique == {"vocals", "accompaniment"}:
             cmd += ["--two-stems", "vocals"]
-        else:
-            cmd += ["--subset", ",".join(stems_lower)]
+        elif len(unique) == 1:
+            cmd += ["--stem", next(iter(unique))]
     cmd.append(str(src_path))
     proc = subprocess.run(cmd, capture_output=True, text=True)
     extra = f"\n{reason}" if reason else ""
@@ -407,10 +408,11 @@ async def stream_separate_stems(_, info, filename: str, model: str, stems: list[
     ]
     if stems:
         stems_lower = [s.lower() for s in stems]
-        if set(stems_lower) == {"vocals", "accompaniment"}:
+        unique = set(stems_lower)
+        if unique == {"vocals", "accompaniment"}:
             cmd += ["--two-stems", "vocals"]
-        else:
-            cmd += ["--subset", ",".join(stems_lower)]
+        elif len(unique) == 1:
+            cmd += ["--stem", next(iter(unique))]
     cmd.append(str(src_path))
     async for line in stream_process(cmd):
         yield line
