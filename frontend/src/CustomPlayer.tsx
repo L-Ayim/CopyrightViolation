@@ -16,7 +16,7 @@ export function CustomPlayer({
 }) {
   const audioCtxRef = useRef<AudioContext>();
   const buffersRef = useRef<Record<string, AudioBuffer>>({});
-  const sourcesRef = useRef<Record<string, AudioBufferSourceNode>>({});
+  const sourcesRef = useRef<Record<string, { src: AudioBufferSourceNode; gain: GainNode }>>({});
   const startTimeRef = useRef(0);
   const pauseOffsetRef = useRef(0);
 
@@ -65,20 +65,27 @@ export function CustomPlayer({
     });
   }, [selected, stems, duration]);
 
+  // Update gain when selection changes
+  useEffect(() => {
+    Object.entries(sourcesRef.current).forEach(([name, { gain }]) => {
+      gain.gain.value = selected.includes(name) ? 1 : 0;
+    });
+  }, [selected]);
+
   const playAll = (offset = pauseOffsetRef.current) => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
     const now = ctx.currentTime;
     startTimeRef.current = now - offset;
-    Object.entries(buffersRef.current)
-      .filter(([name]) => selected.includes(name))
-      .forEach(([name, buffer]) => {
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.connect(ctx.destination);
-        src.start(now, offset);
-        sourcesRef.current[name] = src;
-      });
+    Object.entries(buffersRef.current).forEach(([name, buffer]) => {
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      const gain = ctx.createGain();
+      gain.gain.value = selected.includes(name) ? 1 : 0;
+      src.connect(gain).connect(ctx.destination);
+      src.start(now, offset);
+      sourcesRef.current[name] = { src, gain };
+    });
     setIsPlaying(true);
   };
 
@@ -86,7 +93,7 @@ export function CustomPlayer({
     const ctx = audioCtxRef.current;
     if (!ctx) return;
     pauseOffsetRef.current = ctx.currentTime - startTimeRef.current;
-    Object.values(sourcesRef.current).forEach((src) => src.stop());
+    Object.values(sourcesRef.current).forEach(({ src }) => src.stop());
     sourcesRef.current = {};
     setIsPlaying(false);
   };
@@ -97,7 +104,7 @@ export function CustomPlayer({
   };
 
   const seekTo = (t: number) => {
-    Object.values(sourcesRef.current).forEach((src) => src.stop());
+    Object.values(sourcesRef.current).forEach(({ src }) => src.stop());
     sourcesRef.current = {};
     pauseOffsetRef.current = t;
     playAll(t);
