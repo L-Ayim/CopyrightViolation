@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { CustomPlayer } from "./CustomPlayer";
 import { gql, useQuery, useApolloClient } from "@apollo/client";
 import {
   FaChevronDown,
@@ -354,13 +355,10 @@ export default function App() {
                         </div>
                       )}
                       {isShowingPlayers && (
-                        <div className="flex flex-col space-y-2 mt-2">
-                          {stemsToShow.map((s: any) =>
-                            sel[s.name] ? (
-                              <audio key={s.name} controls src={s.url} className="w-full" />
-                            ) : null
-                          )}
-                        </div>
+                        <CustomPlayer
+                          stems={stemsToShow}
+                          selected={Object.keys(sel).filter((k) => sel[k])}
+                        />
                       )}
                     </div>
                   )}
