@@ -19,7 +19,8 @@ from django.conf import settings
 MEDIA_DIR = Path(settings.MEDIA_ROOT)
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
-type_defs = gql("""
+type_defs = gql(
+    """
   type DownloadResponse {
     success: Boolean!
     message: String
@@ -59,9 +60,10 @@ type_defs = gql("""
     downloadVideoProgress(url: String!): String!
     separateStemsProgress(filename: String!, model: String!): String!
   }
-""")
+"""
+)
 
-query    = QueryType()
+query = QueryType()
 mutation = MutationType()
 subscription = SubscriptionType()
 
@@ -83,10 +85,7 @@ def build_media_url(filename: str) -> str:
 
 def write_metadata(vid: str, info: dict):
     meta_path = MEDIA_DIR / f"{vid}.json"
-    meta = {
-        "title": info.get("title", vid),
-        "thumbnail": info.get("thumbnail")
-    }
+    meta = {"title": info.get("title", vid), "thumbnail": info.get("thumbnail")}
     meta_path.write_text(json.dumps(meta))
 
 
@@ -98,18 +97,37 @@ def read_metadata(vid: str):
 
 
 async def stream_process(cmd: list[str]):
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    assert proc.stdout is not None
-    while True:
-        line = await proc.stdout.readline()
-        if not line:
-            break
-        yield line.decode()
-    await proc.wait()
+    """Yield output lines from a subprocess as they are produced.
+
+    On platforms where ``asyncio`` cannot create subprocess transports (e.g.
+    some Windows event loops), fall back to a synchronous ``subprocess`` running
+    in the current thread and yield its output asynchronously.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        assert proc.stdout is not None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            yield line.decode()
+        await proc.wait()
+    except NotImplementedError:
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ) as proc:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                yield line
+                await asyncio.sleep(0)
+            proc.wait()
 
 
 @query.field("downloads")
@@ -135,19 +153,25 @@ def resolve_downloads(_, __):
             stems_dir = MEDIA_DIR / vid / "stems"
             if stems_dir.exists():
                 for stem_file in sorted(stems_dir.rglob("*.mp3")):
-                    stems_list.append({
-                        "name": stem_file.stem,
-                        "url": build_media_url(f"{vid}/stems/{stem_file.relative_to(stems_dir)}"),
-                    })
+                    stems_list.append(
+                        {
+                            "name": stem_file.stem,
+                            "url": build_media_url(
+                                f"{vid}/stems/{stem_file.relative_to(stems_dir)}"
+                            ),
+                        }
+                    )
 
-        items.append({
-            "filename":  f.name,
-            "url":       rel_url,
-            "type":      typ,
-            "title":     meta["title"],
-            "thumbnail": meta.get("thumbnail"),
-            "stems":     stems_list,
-        })
+        items.append(
+            {
+                "filename": f.name,
+                "url": rel_url,
+                "type": typ,
+                "title": meta["title"],
+                "thumbnail": meta.get("thumbnail"),
+                "stems": stems_list,
+            }
+        )
     return items
 
 
