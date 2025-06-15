@@ -53,12 +53,12 @@ type_defs = gql(
   type Mutation {
     downloadAudio(url: String!): DownloadResponse!
     downloadVideo(url: String!): DownloadResponse!
-    separateStems(filename: String!, model: String!): SeparationResponse!
+    separateStems(filename: String!, model: String!, stems: [String!]!): SeparationResponse!
   }
   type Subscription {
     downloadAudioProgress(url: String!): String!
     downloadVideoProgress(url: String!): String!
-    separateStemsProgress(filename: String!, model: String!): String!
+    separateStemsProgress(filename: String!, model: String!, stems: [String!]!): String!
   }
 """
 )
@@ -259,7 +259,7 @@ def resolve_download_video(_, __, url: str):
 
 
 @mutation.field("separateStems")
-def resolve_separate_stems(_, __, filename: str, model: str):
+def resolve_separate_stems(_, __, filename: str, model: str, stems: list[str]):
     src_path = MEDIA_DIR / filename
     vid = Path(filename).stem
     out_dir = MEDIA_DIR / vid / "stems"
@@ -275,24 +275,27 @@ def resolve_separate_stems(_, __, filename: str, model: str):
     else:
         reason = ""
     device_flag = f"--device={device}"
-    proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "demucs.separate",
-            "-n",
-            model,
-            "--out",
-            str(out_dir),
-            "--filename",
-            "{stem}.{ext}",
-            "--mp3",
-            device_flag,
-            str(src_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    cmd = [
+        sys.executable,
+        "-m",
+        "demucs.separate",
+        "-n",
+        model,
+        "--out",
+        str(out_dir),
+        "--filename",
+        "{stem}.{ext}",
+        "--mp3",
+        device_flag,
+    ]
+    if stems:
+        stems_lower = [s.lower() for s in stems]
+        if set(stems_lower) == {"vocals", "accompaniment"}:
+            cmd += ["--two-stems", "vocals"]
+        else:
+            cmd += ["--subset", ",".join(stems_lower)]
+    cmd.append(str(src_path))
+    proc = subprocess.run(cmd, capture_output=True, text=True)
     extra = f"\n{reason}" if reason else ""
     logs = f"Using device: {device}{extra}\n" + proc.stdout + proc.stderr
     success = proc.returncode == 0
@@ -367,7 +370,7 @@ def resolve_download_video_progress(line, info, url: str):
 
 
 @subscription.source("separateStemsProgress")
-async def stream_separate_stems(_, info, filename: str, model: str):
+async def stream_separate_stems(_, info, filename: str, model: str, stems: list[str]):
     src_path = MEDIA_DIR / filename
     vid = Path(filename).stem
     out_dir = MEDIA_DIR / vid / "stems"
@@ -401,14 +404,20 @@ async def stream_separate_stems(_, info, filename: str, model: str):
         "{stem}.{ext}",
         "--mp3",
         device_flag,
-        str(src_path),
     ]
+    if stems:
+        stems_lower = [s.lower() for s in stems]
+        if set(stems_lower) == {"vocals", "accompaniment"}:
+            cmd += ["--two-stems", "vocals"]
+        else:
+            cmd += ["--subset", ",".join(stems_lower)]
+    cmd.append(str(src_path))
     async for line in stream_process(cmd):
         yield line
 
 
 @subscription.field("separateStemsProgress")
-def resolve_separate_stems_progress(line, info, filename: str, model: str):
+def resolve_separate_stems_progress(line, info, filename: str, model: str, stems: list[str]):
     return line
 
 
