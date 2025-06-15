@@ -152,11 +152,11 @@ export function CustomPlayer({
   }, [isPlaying, loop, duration]);
 
   return (
-    <div className="w-full max-w-lg bg-black text-yellow-400 border border-yellow-400 p-4 rounded-lg space-y-4">
+    <div className="w-full max-w-lg mx-auto bg-black text-yellow-400 border border-yellow-400 p-4 rounded-lg space-y-4">
       <div className="flex space-x-2">
         <button
           onClick={togglePlay}
-          className="flex-1 px-4 py-2 bg-yellow-400 text-black rounded font-bold flex items-center justify-center space-x-2"
+          className={`flex-1 px-4 py-2 rounded font-bold flex items-center justify-center space-x-2 ${isPlaying ? 'bg-yellow-400 text-black' : 'bg-black text-yellow-400'}`}
         >
           {isPlaying ? <FaPause /> : <FaPlay />}
           <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
