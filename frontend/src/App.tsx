@@ -1,6 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { gql, useQuery, useApolloClient } from "@apollo/client";
-import { FaChevronDown } from "react-icons/fa";
+import {
+  FaChevronDown,
+  FaGuitar,
+  FaMicrophone,
+  FaQuestionCircle,
+} from "react-icons/fa";
+import { GiDrumKit, GiGuitarBass, GiPianoKeys } from "react-icons/gi";
+import type { IconType } from "react-icons";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -45,6 +52,15 @@ const SEPARATE_STEMS_PROGRESS = gql`
 
 const AVAILABLE_STEMS = ["bass", "drums", "guitar", "other", "piano", "vocals"];
 
+const STEM_DETAILS: Record<string, { label: string; Icon: IconType }> = {
+  bass: { label: "Bass", Icon: GiGuitarBass },
+  drums: { label: "Drums", Icon: GiDrumKit },
+  guitar: { label: "Guitar", Icon: FaGuitar },
+  other: { label: "Other", Icon: FaQuestionCircle },
+  piano: { label: "Piano", Icon: GiPianoKeys },
+  vocals: { label: "Vocals", Icon: FaMicrophone },
+};
+
 function extractVideoId(url: string): string | null {
   try {
     const p = new URL(url);
@@ -62,14 +78,11 @@ export default function App() {
 
   const client = useApolloClient();
   const [downloading, setDownloading] = useState(false);
-  const [globalLogs, setGlobalLogs] = useState("");
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [logs, setLogs] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
-  const globalLogsRef = useRef<HTMLDivElement>(null);
 
   const searchTerm = search.trim().toLowerCase();
 
@@ -77,27 +90,20 @@ export default function App() {
     setVideoId(extractVideoId(url));
   }, [url]);
 
-  useEffect(() => {
-    if (globalLogsRef.current) {
-      globalLogsRef.current.scrollTop = globalLogsRef.current.scrollHeight;
-    }
-  }, [globalLogs]);
 
   const anyLoading = downloading;
 
   const startDownloadAudio = () => {
     if (!videoId) return;
     setDownloading(true);
-    setGlobalLogs("Starting download...\n");
     client
       .subscribe({ query: DOWNLOAD_AUDIO_PROGRESS, variables: { url } })
       .subscribe({
         next({ data }) {
-          setGlobalLogs((p) => p + data.downloadAudioProgress);
+          // ignore progress text
         },
         complete() {
           setDownloading(false);
-          setGlobalLogs((p) => p + "\nDownload complete\n");
           refetch();
         },
       });
@@ -106,16 +112,14 @@ export default function App() {
   const startDownloadVideo = () => {
     if (!videoId) return;
     setDownloading(true);
-    setGlobalLogs("Starting download...\n");
     client
       .subscribe({ query: DOWNLOAD_VIDEO_PROGRESS, variables: { url } })
       .subscribe({
         next({ data }) {
-          setGlobalLogs((p) => p + data.downloadVideoProgress);
+          // ignore progress text
         },
         complete() {
           setDownloading(false);
-          setGlobalLogs((p) => p + "\nDownload complete\n");
           refetch();
         },
       });
@@ -175,15 +179,8 @@ export default function App() {
               Download Video
             </button>
           </div>
-          {globalLogs && (
-            <div
-              ref={globalLogsRef}
-              className="mt-2 p-2 bg-black border border-yellow-400 rounded overflow-auto max-h-40 yellow-scrollbar"
-            >
-              <pre className="text-yellow-400 text-xs whitespace-pre-wrap">
-                {globalLogs}
-              </pre>
-            </div>
+          {downloading && (
+            <div className="mt-2 w-full h-2 bg-yellow-400 animate-pulse rounded" />
           )}
         </div>
       )}
@@ -192,7 +189,7 @@ export default function App() {
       <div className="w-full max-w-md">
         <input
           type="text"
-          placeholder="Search downloads"
+          placeholder="Search Downloads"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full bg-black text-yellow-400 border-2 border-yellow-400 rounded px-4 py-2 focus:outline-none focus:ring focus:ring-yellow-400"
@@ -236,7 +233,6 @@ export default function App() {
               const isExpanded = !!expanded[f.filename];
               const startSeparation = () => {
                 setQueue((p) => ({ ...p, [f.filename]: true }));
-                setLogs((p) => ({ ...p, [f.filename]: "" }));
                 client
                   .subscribe({
                     query: SEPARATE_STEMS_PROGRESS,
@@ -247,16 +243,12 @@ export default function App() {
                     },
                   })
                   .subscribe({
-                    next({ data }) {
-                      setLogs((p) => ({
-                        ...p,
-                        [f.filename]: (p[f.filename] || "") + data.separateStemsProgress,
-                      }));
+                    next() {
+                      // ignore progress text
                     },
                     complete() {
                       setQueue((p) => ({ ...p, [f.filename]: false }));
                       setExpanded((p) => ({ ...p, [f.filename]: true }));
-                      setLogs((p) => ({ ...p, [f.filename]: "" }));
                       refetch();
                     },
                   });
@@ -316,36 +308,39 @@ export default function App() {
                     </div>
                   </div>
                   {isExpanded && stemsToShow.length > 0 && (
-                    <div className="p-2 flex flex-col space-y-1">
-                      {stemsToShow.map((s: any) => (
-                        <label key={s.name} className="inline-flex items-center space-x-1">
-                          <input
-                            type="checkbox"
-                            checked={!!sel[s.name]}
-                            onChange={() => toggle(s.name)}
-                            className="yellow-checkbox"
-                          />
-                          <span className="text-yellow-400 text-sm">
-                            {`${f.title}_${s.name}`}
-                          </span>
-                        </label>
-                      ))}
+                    <div className="p-2 flex flex-col space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        {stemsToShow.map((s: any) => {
+                          const detail = STEM_DETAILS[s.name] || {
+                            label: s.name,
+                            Icon: FaQuestionCircle,
+                          };
+                          const Icon = detail.Icon;
+                          const selectedStem = !!sel[s.name];
+                          return (
+                            <button
+                              key={s.name}
+                              onClick={() => toggle(s.name)}
+                              className={`border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 ${selectedStem ? "bg-yellow-400 text-black" : "text-yellow-400"}`}
+                            >
+                              <Icon className="w-6 h-6" />
+                              <span className="text-xs font-semibold">{detail.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                       {Object.values(sel).some(Boolean) && (
                         <button
                           onClick={downloadSelected}
-                          className="mt-1 bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded self-start"
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded self-start"
                         >
                           Download Selected
                         </button>
                       )}
                     </div>
                   )}
-                  {logs[f.filename] && (
-                    <div className="p-2 overflow-auto max-h-40 yellow-scrollbar">
-                      <pre className="text-yellow-400 text-xs whitespace-pre-wrap">
-                        {logs[f.filename]}
-                      </pre>
-                    </div>
+                  {inQueue && (
+                    <div className="h-2 bg-yellow-400 animate-pulse w-full" />
                   )}
                 </div>
               );
