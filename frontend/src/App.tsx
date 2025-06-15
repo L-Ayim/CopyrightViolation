@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { gql, useQuery, useMutation } from "@apollo/client";
+import { gql, useQuery, useApolloClient } from "@apollo/client";
 import { FaChevronDown } from "react-icons/fa";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -21,32 +21,21 @@ const GET_DOWNLOADS = gql`
   }
 `;
 
-const DOWNLOAD_AUDIO = gql`
-  mutation DownloadAudio($url: String!) {
-    downloadAudio(url: $url) {
-      success
-      downloadUrl
-      message
-    }
+const DOWNLOAD_AUDIO_PROGRESS = gql`
+  subscription DownloadAudioProgress($url: String!) {
+    downloadAudioProgress(url: $url)
   }
 `;
 
-const DOWNLOAD_VIDEO = gql`
-  mutation DownloadVideo($url: String!) {
-    downloadVideo(url: $url) {
-      success
-      downloadUrl
-      message
-    }
+const DOWNLOAD_VIDEO_PROGRESS = gql`
+  subscription DownloadVideoProgress($url: String!) {
+    downloadVideoProgress(url: $url)
   }
 `;
 
-const SEPARATE_STEMS = gql`
-  mutation SeparateStems($filename: String!, $model: String!) {
-    separateStems(filename: $filename, model: $model) {
-      success
-      logs
-    }
+const SEPARATE_STEMS_PROGRESS = gql`
+  subscription SeparateStemsProgress($filename: String!, $model: String!) {
+    separateStemsProgress(filename: $filename, model: $model)
   }
 `;
 
@@ -67,33 +56,9 @@ export default function App() {
 
   const { data: dlData, refetch } = useQuery(GET_DOWNLOADS);
 
-  const [downloadAudio, { loading: audioLoading }] = useMutation(
-    DOWNLOAD_AUDIO,
-    {
-      onCompleted({ downloadAudio }) {
-        if (downloadAudio.success) {
-          refetch();
-        }
-      },
-    }
-  );
-
-  const [downloadVideo, { loading: videoLoading }] = useMutation(
-    DOWNLOAD_VIDEO,
-    {
-      onCompleted({ downloadVideo }) {
-        if (downloadVideo.success) {
-          refetch();
-        }
-      },
-    }
-  );
-
-  const [separateStems] = useMutation(SEPARATE_STEMS, {
-    onCompleted() {
-      refetch();
-    },
-  });
+  const client = useApolloClient();
+  const [downloading, setDownloading] = useState(false);
+  const [globalLogs, setGlobalLogs] = useState("");
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
@@ -109,7 +74,41 @@ export default function App() {
     setVideoId(extractVideoId(url));
   }, [url]);
 
-  const anyLoading = audioLoading || videoLoading;
+  const anyLoading = downloading;
+
+  const startDownloadAudio = () => {
+    if (!videoId) return;
+    setDownloading(true);
+    setGlobalLogs("");
+    client
+      .subscribe({ query: DOWNLOAD_AUDIO_PROGRESS, variables: { url } })
+      .subscribe({
+        next({ data }) {
+          setGlobalLogs((p) => p + data.downloadAudioProgress);
+        },
+        complete() {
+          setDownloading(false);
+          refetch();
+        },
+      });
+  };
+
+  const startDownloadVideo = () => {
+    if (!videoId) return;
+    setDownloading(true);
+    setGlobalLogs("");
+    client
+      .subscribe({ query: DOWNLOAD_VIDEO_PROGRESS, variables: { url } })
+      .subscribe({
+        next({ data }) {
+          setGlobalLogs((p) => p + data.downloadVideoProgress);
+        },
+        complete() {
+          setDownloading(false);
+          refetch();
+        },
+      });
+  };
 
   return (
     <div className="min-h-screen bg-black flex flex-col items-center p-4 sm:p-6 space-y-8 sm:space-y-12">
@@ -151,14 +150,14 @@ export default function App() {
         <div className="w-full max-w-md">
           <div className="flex flex-col sm:flex-row gap-4">
             <button
-              onClick={() => downloadAudio({ variables: { url } })}
+              onClick={startDownloadAudio}
               disabled={anyLoading}
               className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
             >
               Download Audio
             </button>
             <button
-              onClick={() => downloadVideo({ variables: { url } })}
+              onClick={startDownloadVideo}
               disabled={anyLoading}
               className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
             >
@@ -167,6 +166,13 @@ export default function App() {
           </div>
           {anyLoading && (
             <div className="w-full h-2 bg-yellow-400 animate-pulse mt-2" />
+          )}
+          {globalLogs && (
+            <div className="mt-2 p-2 bg-black border border-yellow-400 rounded overflow-auto max-h-40">
+              <pre className="text-yellow-400 text-xs whitespace-pre-wrap">
+                {globalLogs}
+              </pre>
+            </div>
           )}
         </div>
       )}
@@ -232,18 +238,25 @@ export default function App() {
                     Object.entries(desiredSel).filter(([, v]) => v)
                   ),
                 }));
-                setLogs((p) => ({ ...p, [f.filename]: "Starting separation..." }));
-                separateStems({
-                  variables: { filename: f.filename, model: "htdemucs" },
-                })
-                  .then(({ data }) => {
-                    const text = data?.separateStems?.logs || "";
-                    setLogs((p) => ({ ...p, [f.filename]: text }));
-                    setExpanded((p) => ({ ...p, [f.filename]: true }));
+                setLogs((p) => ({ ...p, [f.filename]: "" }));
+                client
+                  .subscribe({
+                    query: SEPARATE_STEMS_PROGRESS,
+                    variables: { filename: f.filename, model: "htdemucs" },
                   })
-                  .finally(() =>
-                    setQueue((p) => ({ ...p, [f.filename]: false }))
-                  );
+                  .subscribe({
+                    next({ data }) {
+                      setLogs((p) => ({
+                        ...p,
+                        [f.filename]: (p[f.filename] || "") + data.separateStemsProgress,
+                      }));
+                    },
+                    complete() {
+                      setQueue((p) => ({ ...p, [f.filename]: false }));
+                      setExpanded((p) => ({ ...p, [f.filename]: true }));
+                      refetch();
+                    },
+                  });
               };
               const stemsToShow = stems.filter((s: any) => {
                 const d = desired[f.filename];

@@ -1,10 +1,17 @@
+import asyncio
 import subprocess
 import json
 import urllib.parse
 from pathlib import Path
 import sys
 
-from ariadne import make_executable_schema, QueryType, MutationType, gql
+from ariadne import (
+    make_executable_schema,
+    QueryType,
+    MutationType,
+    SubscriptionType,
+    gql,
+)
 import torch
 from django.conf import settings
 
@@ -47,10 +54,16 @@ type_defs = gql("""
     downloadVideo(url: String!): DownloadResponse!
     separateStems(filename: String!, model: String!): SeparationResponse!
   }
+  type Subscription {
+    downloadAudioProgress(url: String!): String!
+    downloadVideoProgress(url: String!): String!
+    separateStemsProgress(filename: String!, model: String!): String!
+  }
 """)
 
 query    = QueryType()
 mutation = MutationType()
+subscription = SubscriptionType()
 
 
 def extract_video_id(url: str) -> str:
@@ -82,6 +95,21 @@ def read_metadata(vid: str):
     if not meta_path.exists():
         return {"title": vid, "thumbnail": None}
     return json.loads(meta_path.read_text())
+
+
+async def stream_process(cmd: list[str]):
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    assert proc.stdout is not None
+    while True:
+        line = await proc.stdout.readline()
+        if not line:
+            break
+        yield line.decode()
+    await proc.wait()
 
 
 @query.field("downloads")
@@ -221,4 +249,109 @@ def resolve_separate_stems(_, __, filename: str, model: str):
     return {"success": success, "logs": logs}
 
 
-schema = make_executable_schema(type_defs, query, mutation)
+@subscription.source("downloadAudioProgress")
+async def stream_download_audio(_, info, url: str):
+    vid = extract_video_id(url)
+    out_filename = f"{vid}.mp3"
+    out_path = MEDIA_DIR / out_filename
+    try:
+        raw = await asyncio.to_thread(
+            subprocess.run,
+            ["yt-dlp", "--dump-json", url],
+            capture_output=True,
+            text=True,
+        )
+        write_metadata(vid, json.loads(raw.stdout))
+    except Exception:
+        write_metadata(vid, {"title": vid, "thumbnail": None})
+    cmd = ["yt-dlp", "-x", "--audio-format", "mp3", "-o", str(out_path), url]
+    async for line in stream_process(cmd):
+        yield line
+
+
+@subscription.field("downloadAudioProgress")
+def resolve_download_audio_progress(line, info, url: str):
+    return line
+
+
+@subscription.source("downloadVideoProgress")
+async def stream_download_video(_, info, url: str):
+    vid = extract_video_id(url)
+    out_filename = f"{vid}.mp4"
+    out_path = MEDIA_DIR / out_filename
+    try:
+        raw = await asyncio.to_thread(
+            subprocess.run,
+            ["yt-dlp", "--dump-json", url],
+            capture_output=True,
+            text=True,
+        )
+        write_metadata(vid, json.loads(raw.stdout))
+    except Exception:
+        write_metadata(vid, {"title": vid, "thumbnail": None})
+    cmd = [
+        "yt-dlp",
+        "-f",
+        "bestvideo+bestaudio",
+        "--merge-output-format",
+        "mp4",
+        "-o",
+        str(out_path),
+        url,
+    ]
+    async for line in stream_process(cmd):
+        yield line
+
+
+@subscription.field("downloadVideoProgress")
+def resolve_download_video_progress(line, info, url: str):
+    return line
+
+
+@subscription.source("separateStemsProgress")
+async def stream_separate_stems(_, info, filename: str, model: str):
+    src_path = MEDIA_DIR / filename
+    vid = Path(filename).stem
+    out_dir = MEDIA_DIR / vid / "stems"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    cuda_available = torch.cuda.is_available()
+    device = "cuda" if cuda_available else "cpu"
+    if not cuda_available:
+        if torch.version.cuda is None:
+            reason = "PyTorch was installed without CUDA support."
+        else:
+            reason = "CUDA runtime not available."
+    else:
+        reason = ""
+    device_flag = f"--device={device}"
+
+    intro = f"Using device: {device}\n"
+    if reason:
+        intro += reason + "\n"
+    yield intro
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "demucs.separate",
+        "-n",
+        model,
+        "--out",
+        str(out_dir),
+        "--filename",
+        "{stem}.{ext}",
+        "--mp3",
+        device_flag,
+        str(src_path),
+    ]
+    async for line in stream_process(cmd):
+        yield line
+
+
+@subscription.field("separateStemsProgress")
+def resolve_separate_stems_progress(line, info, filename: str, model: str):
+    return line
+
+
+schema = make_executable_schema(type_defs, query, mutation, subscription)
