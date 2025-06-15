@@ -30,13 +30,28 @@ if ($forceCuda) {
     }
 }
 
+# Check which variant of torch is already installed
+$torchCuda = $false
+try {
+    & python -c "import torch,sys; sys.exit(0 if torch.version.cuda else 1)" 2>$null
+    if ($LASTEXITCODE -eq 0) { $torchCuda = $true }
+} catch {}
+
 if ($gpu) {
-    Write-Host "GPU detected - installing CUDA build of torch"
-    # Force reinstall to ensure the CUDA-enabled build replaces any CPU-only version
-    python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    if (-not $torchCuda) {
+        Write-Host "GPU detected - installing CUDA build of torch"
+        # Force reinstall to ensure the CUDA-enabled build replaces any CPU-only version
+        python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    } else {
+        Write-Host "GPU detected and CUDA build of torch already installed"
+    }
 } else {
-    Write-Host "No GPU detected - installing CPU build of torch"
-    python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+    if ($torchCuda) {
+        Write-Host "CPU mode but CUDA build installed - reinstalling CPU build"
+        python -m pip install --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+    } else {
+        Write-Host "No GPU detected and CPU build of torch already installed"
+    }
 }
 
 # Ensure frontend deps
