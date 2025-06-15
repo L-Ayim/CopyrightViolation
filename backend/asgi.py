@@ -1,7 +1,13 @@
 # backend/asgi.py
 
+import sys
+import asyncio
 import os
 import django
+
+# Ensure Windows uses the Proactor event loop so that asyncio subprocesses work
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
