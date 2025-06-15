@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { gql, useQuery, useApolloClient } from "@apollo/client";
 import { FaChevronDown } from "react-icons/fa";
 
@@ -67,12 +67,19 @@ export default function App() {
   const [desired, setDesired] = useState<Record<string, Record<string, boolean>>>({});
   const [logs, setLogs] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const globalLogsRef = useRef<HTMLDivElement>(null);
 
   const searchTerm = search.trim().toLowerCase();
 
   useEffect(() => {
     setVideoId(extractVideoId(url));
   }, [url]);
+
+  useEffect(() => {
+    if (globalLogsRef.current) {
+      globalLogsRef.current.scrollTop = globalLogsRef.current.scrollHeight;
+    }
+  }, [globalLogs]);
 
   const anyLoading = downloading;
 
@@ -88,6 +95,7 @@ export default function App() {
         },
         complete() {
           setDownloading(false);
+          setGlobalLogs("");
           refetch();
         },
       });
@@ -105,6 +113,7 @@ export default function App() {
         },
         complete() {
           setDownloading(false);
+          setGlobalLogs("");
           refetch();
         },
       });
@@ -165,7 +174,10 @@ export default function App() {
             </button>
           </div>
           {globalLogs && (
-            <div className="mt-2 p-2 bg-black border border-yellow-400 rounded overflow-auto max-h-40">
+            <div
+              ref={globalLogsRef}
+              className="mt-2 p-2 bg-black border border-yellow-400 rounded overflow-auto max-h-40 yellow-scrollbar"
+            >
               <pre className="text-yellow-400 text-xs whitespace-pre-wrap">
                 {globalLogs}
               </pre>
@@ -251,6 +263,7 @@ export default function App() {
                     complete() {
                       setQueue((p) => ({ ...p, [f.filename]: false }));
                       setExpanded((p) => ({ ...p, [f.filename]: true }));
+                      setLogs((p) => ({ ...p, [f.filename]: "" }));
                       refetch();
                     },
                   });
@@ -377,7 +390,7 @@ export default function App() {
                     </div>
                   )}
                   {logs[f.filename] && (
-                    <div className="p-2 overflow-auto max-h-40">
+                    <div className="p-2 overflow-auto max-h-40 yellow-scrollbar">
                       <pre className="text-yellow-400 text-xs whitespace-pre-wrap">
                         {logs[f.filename]}
                       </pre>

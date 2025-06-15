@@ -26,3 +26,20 @@
   border-width: 0 0.125rem 0.125rem 0;
   transform: rotate(45deg);
 }
+
+/* Scrollbar styling for log areas */
+.yellow-scrollbar {
+  scrollbar-color: #facc15 #000;
+  scrollbar-width: thin;
+}
+.yellow-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.yellow-scrollbar::-webkit-scrollbar-track {
+  background: #000;
+}
+.yellow-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #facc15;
+  border-radius: 4px;
+}
