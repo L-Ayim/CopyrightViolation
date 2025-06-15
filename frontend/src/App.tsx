@@ -255,9 +255,9 @@ export default function App() {
               };
               const stemsToShow = stems;
 
-              return (
-                <div
-                  key={f.filename}
+                return (
+                  <div
+                    key={f.filename}
                   className="bg-black border border-yellow-400 rounded-lg overflow-hidden flex flex-col"
                 >
                   <div className="flex">
@@ -371,12 +371,11 @@ export default function App() {
                       Download
                     </a>
                   </div>
-                </div>
-              );
-              })}
-        </div>
-
+                  </div>
+                );
+              }
+            })}
+          </div>
       </div>
-    </div>
   );
 }
