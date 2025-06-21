@@ -4,6 +4,7 @@ import json
 import urllib.parse
 from pathlib import Path
 import sys
+import shutil
 
 from ariadne import (
     make_executable_schema,
@@ -54,6 +55,7 @@ type_defs = gql(
     downloadAudio(url: String!): DownloadResponse!
     downloadVideo(url: String!): DownloadResponse!
     separateStems(filename: String!, model: String!, stems: [String!]!): SeparationResponse!
+    deleteDownload(filename: String!): Boolean!
   }
   type Subscription {
     downloadAudioProgress(url: String!): String!
@@ -301,6 +303,24 @@ def resolve_separate_stems(_, __, filename: str, model: str, stems: list[str]):
     logs = f"Using device: {device}{extra}\n" + proc.stdout + proc.stderr
     success = proc.returncode == 0
     return {"success": success, "logs": logs}
+
+
+@mutation.field("deleteDownload")
+def resolve_delete_download(_, __, filename: str):
+    target = MEDIA_DIR / filename
+    vid = Path(filename).stem
+    meta_path = MEDIA_DIR / f"{vid}.json"
+    stems_dir = MEDIA_DIR / vid
+    try:
+        if target.exists():
+            target.unlink()
+        if meta_path.exists():
+            meta_path.unlink()
+        if stems_dir.exists():
+            shutil.rmtree(stems_dir)
+        return True
+    except Exception:
+        return False
 
 
 @subscription.source("downloadAudioProgress")
