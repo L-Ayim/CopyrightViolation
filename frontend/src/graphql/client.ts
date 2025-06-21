@@ -1,5 +1,6 @@
 // src/graphql/client.ts
-import { ApolloClient, InMemoryCache, split, HttpLink } from "@apollo/client";
+import { ApolloClient, InMemoryCache, split } from "@apollo/client";
+import { createUploadLink } from "apollo-upload-client";
 import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { createClient } from "graphql-ws";
 import { getMainDefinition } from "@apollo/client/utilities";
@@ -7,7 +8,7 @@ import { getMainDefinition } from "@apollo/client/utilities";
 // Resolve the backend host dynamically so the frontend works when accessed
 // from other devices on the network. During development the Vite dev server
 // proxies `/graphql` to the Django backend.
-const httpLink = new HttpLink({ uri: "/graphql/" });
+const httpLink = createUploadLink({ uri: "/graphql/" });
 
 const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
 const wsLink = new GraphQLWsLink(

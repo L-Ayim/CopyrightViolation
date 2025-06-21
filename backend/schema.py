@@ -5,6 +5,7 @@ import urllib.parse
 from pathlib import Path
 import sys
 import shutil
+import secrets
 
 from ariadne import (
     make_executable_schema,
@@ -12,6 +13,7 @@ from ariadne import (
     MutationType,
     SubscriptionType,
     gql,
+    upload_scalar,
 )
 import torch
 from django.conf import settings
@@ -22,6 +24,8 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 type_defs = gql(
     """
+  scalar Upload
+
   type DownloadResponse {
     success: Boolean!
     message: String
@@ -54,6 +58,7 @@ type_defs = gql(
   type Mutation {
     downloadAudio(url: String!): DownloadResponse!
     downloadVideo(url: String!): DownloadResponse!
+    uploadAudio(file: Upload!, title: String): DownloadResponse!
     separateStems(filename: String!, model: String!, stems: [String!]!): SeparationResponse!
     deleteDownload(filename: String!): Boolean!
   }
@@ -137,9 +142,10 @@ def resolve_downloads(_, __):
     items = []
     files = [f for f in MEDIA_DIR.iterdir() if f.is_file()]
     files.sort(key=lambda p: p.stat().st_mtime)
+    audio_exts = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
     for f in files:
         ext = f.suffix.lower()
-        if ext == ".mp3":
+        if ext in audio_exts:
             typ = "audio"
         elif ext == ".mp4":
             typ = "video"
@@ -258,6 +264,20 @@ def resolve_download_video(_, __, url: str):
     rel_url = build_media_url(out_filename) if success else None
 
     return {"success": success, "message": message, "downloadUrl": rel_url}
+
+
+@mutation.field("uploadAudio")
+def resolve_upload_audio(_, __, file, title: str | None = None):
+    ext = Path(file.name).suffix or ".mp3"
+    vid = secrets.token_hex(8)
+    out_filename = f"{vid}{ext}"
+    out_path = MEDIA_DIR / out_filename
+    with open(out_path, "wb") as dst:
+        for chunk in file.chunks():
+            dst.write(chunk)
+    write_metadata(vid, {"title": title or file.name, "thumbnail": None})
+    rel_url = build_media_url(out_filename)
+    return {"success": True, "message": "", "downloadUrl": rel_url}
 
 
 @mutation.field("separateStems")
@@ -443,4 +463,4 @@ def resolve_separate_stems_progress(line, info, filename: str, model: str, stems
     return line
 
 
-schema = make_executable_schema(type_defs, query, mutation, subscription)
+schema = make_executable_schema(type_defs, query, mutation, subscription, upload_scalar)
