@@ -60,6 +60,15 @@ const SEPARATE_STEMS_PROGRESS = gql`
   }
 `;
 
+const PAUL_STRETCH = gql`
+  mutation PaulStretch($filename: String!, $stretch: Float!, $window: Float) {
+    paulStretch(filename: $filename, stretch: $stretch, window: $window) {
+      success
+      downloadUrl
+    }
+  }
+`;
+
 const DELETE_DOWNLOAD = gql`
   mutation DeleteDownload($filename: String!) {
     deleteDownload(filename: $filename)
@@ -107,6 +116,7 @@ export default function App() {
   const [downloading, setDownloading] = useState(false);
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
+  const [paulQueue, setPaulQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showPlayers, setShowPlayers] = useState<Record<string, boolean>>({});
@@ -133,7 +143,7 @@ export default function App() {
   const handleTouchStart = () => {
     const now = Date.now();
     if (now - lastTouchRef.current < 300) {
-      setStickyHeader((p) => !p);
+      setStickyHeader((p: boolean) => !p);
       lastTouchRef.current = 0;
     } else {
       lastTouchRef.current = now;
@@ -200,7 +210,7 @@ export default function App() {
 
   const preloadStems = async (file: string, stems: Stem[]) => {
     if (buffersRef.current[file]) return;
-    setLoadingStems((p) => ({ ...p, [file]: true }));
+    setLoadingStems((p: Record<string, boolean>) => ({ ...p, [file]: true }));
     const ctx = new AudioContext();
     const buffers: Record<string, AudioBuffer> = {};
     await Promise.all(
@@ -215,13 +225,13 @@ export default function App() {
     );
     ctx.close();
     buffersRef.current[file] = buffers;
-    setLoadingStems((p) => ({ ...p, [file]: false }));
+    setLoadingStems((p: Record<string, boolean>) => ({ ...p, [file]: false }));
   };
 
   return (
     <>
       <header
-        onDoubleClick={() => setStickyHeader((p) => !p)}
+        onDoubleClick={() => setStickyHeader((p: boolean) => !p)}
         onTouchStart={handleTouchStart}
         className={`w-full bg-black flex flex-col items-center p-4 space-y-2 ${stickyHeader ? "sticky top-0 z-10 ring-2 ring-yellow-400" : ""}`}
       >
@@ -321,7 +331,7 @@ export default function App() {
               const stems = f.stems || [];
               const sel = selected[f.filename] || {};
               const toggle = (name: string) => {
-                setSelected((p) => ({
+                setSelected((p: Record<string, Record<string, boolean>>) => ({
                   ...p,
                   [f.filename]: { ...sel, [name]: !sel[name] },
                 }));
@@ -343,14 +353,14 @@ export default function App() {
               const isExpanded = !!expanded[f.filename];
               const isShowingPlayers = !!showPlayers[f.filename];
               const togglePlayers = () => {
-                setShowPlayers((p) => ({
+                setShowPlayers((p: Record<string, boolean>) => ({
                   ...p,
                   [f.filename]: !isShowingPlayers,
                 }));
               };
-              const startSeparation = () => {
-                setQueue((p) => ({ ...p, [f.filename]: true }));
-                client
+                const startSeparation = () => {
+                  setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
+                  client
                   .subscribe({
                     query: SEPARATE_STEMS_PROGRESS,
                     variables: {
@@ -364,13 +374,29 @@ export default function App() {
                       // ignore progress text
                     },
                     complete() {
-                      setQueue((p) => ({ ...p, [f.filename]: false }));
-                      setExpanded((p) => ({ ...p, [f.filename]: true }));
+                      setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
+                      setExpanded((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
                       refetch();
                     },
                   });
-              };
-              const stemsToShow = stems;
+                };
+                const startPaul = () => {
+                  const factorStr = window.prompt("Stretch factor", "8");
+                  if (!factorStr) return;
+                  const factor = parseFloat(factorStr);
+                  if (!factor || factor <= 0) return;
+                  setPaulQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
+                  client
+                    .mutate({
+                      mutation: PAUL_STRETCH,
+                      variables: { filename: f.filename, stretch: factor },
+                    })
+                    .then(() => {
+                      setPaulQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
+                      refetch();
+                    });
+                };
+                const stemsToShow = stems;
 
                 return (
                   <div
@@ -394,7 +420,7 @@ export default function App() {
                           <button
                             onClick={() => {
                               const willExpand = !isExpanded;
-                              setExpanded((p) => ({
+                              setExpanded((p: Record<string, boolean>) => ({
                                 ...p,
                                 [f.filename]: willExpand,
                               }));
@@ -437,6 +463,13 @@ export default function App() {
                       className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
                           {inQueue ? "Separating..." : "Separate"}
+                        </button>
+                        <button
+                          onClick={startPaul}
+                          disabled={paulQueue[f.filename]}
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
+                        >
+                          {paulQueue[f.filename] ? "Stretching..." : "Paulstretch"}
                         </button>
                         <button
                           onClick={() => deleteFile(f.filename)}
@@ -494,13 +527,14 @@ export default function App() {
                               </button>
                             </div>
                           )}
-                          {isShowingPlayers && (
-                            <CustomPlayer
-                              stems={stemsToShow}
-                              selected={Object.keys(sel).filter((k) => sel[k])}
-                              preloaded={buffersRef.current[f.filename] || {}}
-                            />
-                          )}
+                            {isShowingPlayers && (
+                              <CustomPlayer
+                                stems={stemsToShow}
+                                selected={Object.keys(sel).filter((k) => sel[k])}
+                                preloaded={buffersRef.current[f.filename] || {}}
+                                analysis={analysisData[f.filename]}
+                              />
+                            )}
                         </>
                       )}
                     </div>
