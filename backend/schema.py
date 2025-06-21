@@ -51,21 +51,35 @@ type_defs = gql(
     logs: String
   }
 
+  type AudioAnalysis {
+    bpm: Float!
+    key: String!
+  }
+
   type Query {
     downloads: [DownloadedFile!]!
+    audioAnalysis(filename: String!): AudioAnalysis!
   }
 
   type Mutation {
     downloadAudio(url: String!): DownloadResponse!
     downloadVideo(url: String!): DownloadResponse!
     uploadAudio(file: Upload!, title: String): DownloadResponse!
-    separateStems(filename: String!, model: String!, stems: [String!]!): SeparationResponse!
+    separateStems(
+      filename: String!,
+      model: String!,
+      stems: [String!]!
+    ): SeparationResponse!
     deleteDownload(filename: String!): Boolean!
   }
   type Subscription {
     downloadAudioProgress(url: String!): String!
     downloadVideoProgress(url: String!): String!
-    separateStemsProgress(filename: String!, model: String!, stems: [String!]!): String!
+    separateStemsProgress(
+      filename: String!,
+      model: String!,
+      stems: [String!]!
+    ): String!
   }
 """
 )
@@ -92,7 +106,10 @@ def build_media_url(filename: str) -> str:
 
 def write_metadata(vid: str, info: dict):
     meta_path = MEDIA_DIR / f"{vid}.json"
-    meta = {"title": info.get("title", vid), "thumbnail": info.get("thumbnail")}
+    meta = {
+        "title": info.get("title", vid),
+        "thumbnail": info.get("thumbnail"),
+    }
     meta_path.write_text(json.dumps(meta))
 
 
@@ -107,8 +124,8 @@ async def stream_process(cmd: list[str]):
     """Yield output lines from a subprocess as they are produced.
 
     On platforms where ``asyncio`` cannot create subprocess transports (e.g.
-    some Windows event loops), fall back to a synchronous ``subprocess`` running
-    in the current thread and yield its output asynchronously.
+    some Windows event loops), fall back to a synchronous ``subprocess``
+    running in the current thread and yield its output asynchronously.
     """
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -165,7 +182,8 @@ def resolve_downloads(_, __):
                         {
                             "name": stem_file.stem,
                             "url": build_media_url(
-                                f"{vid}/stems/{stem_file.relative_to(stems_dir)}"
+                                f"{vid}/stems/"
+                                f"{stem_file.relative_to(stems_dir)}"
                             ),
                         }
                     )
@@ -181,6 +199,34 @@ def resolve_downloads(_, __):
             }
         )
     return items
+
+
+@query.field("audioAnalysis")
+def resolve_audio_analysis(_, __, filename: str):
+    import librosa
+    path = MEDIA_DIR / filename
+    if not path.exists():
+        return {"bpm": 0.0, "key": ""}
+    y, sr = librosa.load(path)
+    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+    note_names = [
+        "C",
+        "C#",
+        "D",
+        "D#",
+        "E",
+        "F",
+        "F#",
+        "G",
+        "G#",
+        "A",
+        "A#",
+        "B",
+    ]
+    key_index = chroma.mean(axis=1).argmax()
+    key = note_names[int(key_index)]
+    return {"bpm": float(tempo), "key": key}
 
 
 @mutation.field("downloadAudio")
@@ -411,7 +457,9 @@ def resolve_download_video_progress(line, info, url: str):
 
 
 @subscription.source("separateStemsProgress")
-async def stream_separate_stems(_, info, filename: str, model: str, stems: list[str]):
+async def stream_separate_stems(
+    _, info, filename: str, model: str, stems: list[str]
+):
     src_path = MEDIA_DIR / filename
     vid = Path(filename).stem
     out_dir = MEDIA_DIR / vid / "stems"
@@ -459,8 +507,12 @@ async def stream_separate_stems(_, info, filename: str, model: str, stems: list[
 
 
 @subscription.field("separateStemsProgress")
-def resolve_separate_stems_progress(line, info, filename: str, model: str, stems: list[str]):
+def resolve_separate_stems_progress(
+    line, info, filename: str, model: str, stems: list[str]
+):
     return line
 
 
-schema = make_executable_schema(type_defs, query, mutation, subscription, upload_scalar)
+schema = make_executable_schema(
+    type_defs, query, mutation, subscription, upload_scalar
+)
