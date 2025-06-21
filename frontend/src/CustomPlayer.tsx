@@ -7,16 +7,41 @@ export interface Stem {
   url: string;
 }
 
+const NOTE_NAMES = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+];
+
+function shiftKey(key: string, semitones: number): string {
+  const idx = NOTE_NAMES.indexOf(key);
+  if (idx === -1) return key;
+  const n = NOTE_NAMES.length;
+  const newIndex = (idx + semitones % n + n) % n;
+  return NOTE_NAMES[newIndex];
+}
+
 export function CustomPlayer({
   stems,
   selected,
   preloaded = {},
+  analysis,
 }: {
   stems: Stem[];
   selected: string[];
   preloaded?: Record<string, AudioBuffer>;
+  analysis?: { bpm: number; key: string };
 }) {
-  const audioCtxRef = useRef<AudioContext>();
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const buffersRef = useRef<Record<string, AudioBuffer>>({});
   const sourcesRef = useRef<Record<string, { shifter: PitchShifter; gain: GainNode }>>({});
   const startTimeRef = useRef(0);
@@ -28,6 +53,11 @@ export function CustomPlayer({
   const [loop, setLoop] = useState(false);
   const [tempo, setTempo] = useState(1);
   const [pitch, setPitch] = useState(0);
+
+  const originalBpm = analysis?.bpm ?? 0;
+  const originalKey = analysis?.key ?? "";
+  const currentBpm = originalBpm ? originalBpm * tempo : 0;
+  const shiftedKey = originalKey ? shiftKey(originalKey, pitch) : "";
 
   // Initialise AudioContext
   useEffect(() => {
@@ -188,8 +218,14 @@ export function CustomPlayer({
         {new Date(duration * 1000).toISOString().substr(14, 5)}
       </div>
 
+      {analysis && (
+        <div className="text-xs text-center">
+          Original {originalBpm.toFixed(1)} BPM, Key {originalKey}
+        </div>
+      )}
+
       <label className="block text-xs">
-        Tempo
+        Tempo ({currentBpm.toFixed(1)} BPM)
         <input
           type="range"
           min={0.5}
@@ -203,7 +239,7 @@ export function CustomPlayer({
       </label>
 
       <label className="block text-xs">
-        Pitch (semitones)
+        Pitch ({pitch} st, Key: {originalKey} → {shiftedKey})
         <input
           type="range"
           min={-12}
