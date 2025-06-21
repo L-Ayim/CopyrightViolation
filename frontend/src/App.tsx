@@ -57,6 +57,15 @@ const DELETE_DOWNLOAD = gql`
   }
 `;
 
+const UPLOAD_AUDIO = gql`
+  mutation UploadAudio($file: Upload!, $title: String) {
+    uploadAudio(file: $file, title: $title) {
+      success
+      downloadUrl
+    }
+  }
+`;
+
 const AVAILABLE_STEMS = ["bass", "drums", "guitar", "other", "piano", "vocals"];
 
 const STEM_DETAILS: Record<string, { label: string; Icon: IconType }> = {
@@ -80,6 +89,8 @@ function extractVideoId(url: string): string | null {
 export default function App() {
   const [url, setUrl] = useState("");
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const { data: dlData, refetch } = useQuery(GET_DOWNLOADS);
 
@@ -120,7 +131,7 @@ export default function App() {
   };
 
 
-  const anyLoading = downloading;
+  const anyLoading = downloading || uploading;
 
   const startDownloadAudio = () => {
     if (!videoId) return;
@@ -151,6 +162,21 @@ export default function App() {
           setDownloading(false);
           refetch();
         },
+      });
+  };
+
+  const startUploadAudio = () => {
+    if (!uploadFile) return;
+    setUploading(true);
+    client
+      .mutate({
+        mutation: UPLOAD_AUDIO,
+        variables: { file: uploadFile, title: uploadFile.name },
+      })
+      .then(() => {
+        setUploading(false);
+        setUploadFile(null);
+        refetch();
       });
   };
 
@@ -232,12 +258,32 @@ export default function App() {
             >
               Download Video
             </button>
-          </div>
-          {downloading && (
-            <div className="mt-2 w-full h-2 bg-yellow-400 animate-pulse rounded" />
-          )}
         </div>
+        {downloading && (
+          <div className="mt-2 w-full h-2 bg-yellow-400 animate-pulse rounded" />
+        )}
+      </div>
       )}
+
+      {/* Upload Audio */}
+      <div className="w-full max-w-md flex flex-col space-y-2">
+        <input
+          type="file"
+          accept="audio/*"
+          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+          className="w-full text-yellow-400"
+        />
+        <button
+          onClick={startUploadAudio}
+          disabled={anyLoading || !uploadFile}
+          className="bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
+        >
+          Upload Audio
+        </button>
+        {uploading && (
+          <div className="w-full h-2 bg-yellow-400 animate-pulse rounded" />
+        )}
+      </div>
 
       {/* Search Downloads */}
       <div className="w-full max-w-md">
