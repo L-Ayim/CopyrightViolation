@@ -51,6 +51,12 @@ const SEPARATE_STEMS_PROGRESS = gql`
   }
 `;
 
+const DELETE_DOWNLOAD = gql`
+  mutation DeleteDownload($filename: String!) {
+    deleteDownload(filename: $filename)
+  }
+`;
+
 const AVAILABLE_STEMS = ["bass", "drums", "guitar", "other", "piano", "vocals"];
 
 const STEM_DETAILS: Record<string, { label: string; Icon: IconType }> = {
@@ -145,6 +151,14 @@ export default function App() {
           setDownloading(false);
           refetch();
         },
+      });
+  };
+
+  const deleteFile = (filename: string) => {
+    client
+      .mutate({ mutation: DELETE_DOWNLOAD, variables: { filename } })
+      .then(() => {
+        refetch();
       });
   };
 
@@ -351,9 +365,15 @@ export default function App() {
                         <button
                           onClick={startSeparation}
                           disabled={inQueue}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
+                      className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
                           {inQueue ? "Separating..." : "Separate"}
+                        </button>
+                        <button
+                          onClick={() => deleteFile(f.filename)}
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
+                        >
+                          Delete
                         </button>
                       </div>
                     </div>
@@ -442,6 +462,12 @@ export default function App() {
                     >
                       Download
                     </a>
+                    <button
+                      onClick={() => deleteFile(f.filename)}
+                      className="mt-2 bg-black text-yellow-400 text-sm font-bold px-2 py-1 rounded hover:bg-gray-800 self-end"
+                    >
+                      Delete
+                    </button>
                   </div>
                   </div>
                 );
