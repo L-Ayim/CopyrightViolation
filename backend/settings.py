@@ -15,7 +15,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ──────────────────────────────────────────────────────────────────────────────
 # SECURITY
 # ──────────────────────────────────────────────────────────────────────────────
-SECRET_KEY = "django-insecure-+5$jm84_i_y&@h4nz79(m75_f*hd8+0z5z@m#q6(_&rvryryi$"
+SECRET_KEY = (
+    "django-insecure-+5$jm84_i_y&@h4nz79(m75_f*hd8+0z5z@m#q6(_&rvryryi$"
+)
 DEBUG = True
 # Allow access from any host when running the dev server so that
 # devices on the local network can reach the backend.

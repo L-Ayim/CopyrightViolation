@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { FaPause, FaPlay, FaRedo } from "react-icons/fa";
+import { PitchShifter } from "soundtouchjs";
 
 export interface Stem {
   name: string;
@@ -17,7 +18,7 @@ export function CustomPlayer({
 }) {
   const audioCtxRef = useRef<AudioContext>();
   const buffersRef = useRef<Record<string, AudioBuffer>>({});
-  const sourcesRef = useRef<Record<string, { src: AudioBufferSourceNode; gain: GainNode }>>({});
+  const sourcesRef = useRef<Record<string, { shifter: PitchShifter; gain: GainNode }>>({});
   const startTimeRef = useRef(0);
   const pauseOffsetRef = useRef(0);
 
@@ -25,6 +26,8 @@ export function CustomPlayer({
   const [duration, setDuration] = useState(0);
   const [played, setPlayed] = useState(0);
   const [loop, setLoop] = useState(false);
+  const [tempo, setTempo] = useState(1);
+  const [pitch, setPitch] = useState(0);
 
   // Initialise AudioContext
   useEffect(() => {
@@ -43,10 +46,10 @@ export function CustomPlayer({
         ...Object.values(preloaded).map((b) => b.duration)
       );
       if (maxDur > 0) {
-        setDuration((d) => Math.max(d, maxDur));
+        setDuration((d) => Math.max(d, maxDur) / tempo);
       }
     }
-  }, [preloaded]);
+  }, [preloaded, tempo]);
 
   // Load buffers when a stem is first selected
   useEffect(() => {
@@ -61,11 +64,11 @@ export function CustomPlayer({
           .then((data) => ctx.decodeAudioData(data))
           .then((buffer) => {
             buffersRef.current[name] = buffer;
-            setDuration(Math.max(duration, buffer.duration));
+            setDuration(Math.max(duration, buffer.duration) / tempo);
           });
       }
     });
-  }, [selected, stems, duration]);
+  }, [selected, stems, duration, tempo]);
 
   // Update gain when selection changes
   useEffect(() => {
@@ -74,40 +77,52 @@ export function CustomPlayer({
     });
   }, [selected]);
 
-  const playAll = (offset = pauseOffsetRef.current) => {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    startTimeRef.current = now - offset;
-    Object.entries(buffersRef.current).forEach(([name, buffer]) => {
-      const src = ctx.createBufferSource();
-      src.buffer = buffer;
+  useEffect(() => {
+    Object.values(sourcesRef.current).forEach(({ shifter }) => {
+      shifter.tempo = tempo;
+      shifter.pitchSemitones = pitch;
+    });
+  }, [tempo, pitch]);
+
+  const playAll = useCallback(
+    (offset = pauseOffsetRef.current) => {
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      startTimeRef.current = now - offset;
+      Object.entries(buffersRef.current).forEach(([name, buffer]) => {
+      const shifter = new PitchShifter(ctx, buffer, 1024);
+      shifter.pitchSemitones = pitch;
+      shifter.tempo = tempo;
       const gain = ctx.createGain();
       gain.gain.value = selected.includes(name) ? 1 : 0;
-      src.connect(gain).connect(ctx.destination);
-      src.start(now, offset);
-      sourcesRef.current[name] = { src, gain };
+      shifter.connect(gain);
+      gain.connect(ctx.destination);
+      shifter.percentagePlayed = offset / buffer.duration;
+      shifter.on("play", (d: { timePlayed: number }) => {
+        setPlayed(d.timePlayed);
+      });
+      sourcesRef.current[name] = { shifter, gain };
     });
     setIsPlaying(true);
-  };
+  },
+    [pitch, tempo, selected]
+  );
 
-  const pauseAll = () => {
+  const pauseAll = useCallback(() => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
-    pauseOffsetRef.current = Math.min(
-      ctx.currentTime - startTimeRef.current,
-      duration,
-    );
-    Object.values(sourcesRef.current).forEach(({ src }) => {
+    pauseOffsetRef.current = Math.min(played, duration);
+    Object.values(sourcesRef.current).forEach(({ shifter }) => {
       try {
-        src.stop();
+        shifter.disconnect();
       } catch {
         /* ignore */
       }
     });
     sourcesRef.current = {};
     setIsPlaying(false);
-  };
+  }, [played, duration]);
 
   const togglePlay = () => {
     if (isPlaying) pauseAll();
@@ -118,38 +133,25 @@ export function CustomPlayer({
     setLoop((p) => !p);
   };
 
-  const seekTo = (t: number) => {
-    Object.values(sourcesRef.current).forEach(({ src }) => src.stop());
+  const seekTo = useCallback((t: number) => {
+    Object.values(sourcesRef.current).forEach(({ shifter }) => shifter.disconnect());
     sourcesRef.current = {};
     pauseOffsetRef.current = t;
     playAll(t);
-  };
+  }, [playAll]);
 
   useEffect(() => {
-    let raf: number;
-    const update = () => {
-      const ctx = audioCtxRef.current;
-      if (ctx && isPlaying) {
-        const t = ctx.currentTime - startTimeRef.current;
-        setPlayed(t);
-          if (t >= duration) {
-            if (loop) {
-              seekTo(0);
-              raf = requestAnimationFrame(update);
-            } else {
-              pauseOffsetRef.current = duration;
-              sourcesRef.current = {};
-              setIsPlaying(false);
-              setPlayed(duration);
-            }
-        } else {
-          raf = requestAnimationFrame(update);
-        }
+    if (!isPlaying) return;
+    if (played >= duration) {
+      if (loop) {
+        seekTo(0);
+      } else {
+        pauseOffsetRef.current = duration;
+        sourcesRef.current = {};
+        setIsPlaying(false);
       }
-    };
-    if (isPlaying) update();
-    return () => cancelAnimationFrame(raf);
-  }, [isPlaying, loop, duration]);
+    }
+  }, [played, isPlaying, loop, duration, seekTo]);
 
   return (
     <div className="w-full max-w-lg mx-auto bg-black text-yellow-400 border border-yellow-400 p-4 rounded-lg space-y-4">
@@ -185,6 +187,34 @@ export function CustomPlayer({
         {new Date(played * 1000).toISOString().substr(14, 5)} /{' '}
         {new Date(duration * 1000).toISOString().substr(14, 5)}
       </div>
+
+      <label className="block text-xs">
+        Tempo
+        <input
+          type="range"
+          min={0.5}
+          max={2}
+          step={0.01}
+          value={tempo}
+          onChange={(e) => setTempo(+e.target.value)}
+          className="w-full"
+          style={{ accentColor: "#facc15" }}
+        />
+      </label>
+
+      <label className="block text-xs">
+        Pitch (semitones)
+        <input
+          type="range"
+          min={-12}
+          max={12}
+          step={1}
+          value={pitch}
+          onChange={(e) => setPitch(+e.target.value)}
+          className="w-full"
+          style={{ accentColor: "#facc15" }}
+        />
+      </label>
     </div>
   );
 }

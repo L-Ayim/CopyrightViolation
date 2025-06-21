@@ -29,6 +29,15 @@ const GET_DOWNLOADS = gql`
   }
 `;
 
+const GET_AUDIO_ANALYSIS = gql`
+  query AudioAnalysis($filename: String!) {
+    audioAnalysis(filename: $filename) {
+      bpm
+      key
+    }
+  }
+`;
+
 const DOWNLOAD_AUDIO_PROGRESS = gql`
   subscription DownloadAudioProgress($url: String!) {
     downloadAudioProgress(url: $url)
@@ -108,6 +117,7 @@ export default function App() {
   });
   const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
   const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
+  const [analysisData, setAnalysisData] = useState<Record<string, { bpm: number; key: string }>>({});
 
   const searchTerm = search.trim().toLowerCase();
 
@@ -139,7 +149,7 @@ export default function App() {
     client
       .subscribe({ query: DOWNLOAD_AUDIO_PROGRESS, variables: { url } })
       .subscribe({
-        next({ data }) {
+        next() {
           // ignore progress text
         },
         complete() {
@@ -155,7 +165,7 @@ export default function App() {
     client
       .subscribe({ query: DOWNLOAD_VIDEO_PROGRESS, variables: { url } })
       .subscribe({
-        next({ data }) {
+        next() {
           // ignore progress text
         },
         complete() {
@@ -390,6 +400,19 @@ export default function App() {
                               }));
                               if (willExpand) {
                                 preloadStems(f.filename, stemsToShow);
+                                if (!analysisData[f.filename]) {
+                                  client
+                                    .query({
+                                      query: GET_AUDIO_ANALYSIS,
+                                      variables: { filename: f.filename },
+                                    })
+                                    .then(({ data }) => {
+                                      setAnalysisData((a) => ({
+                                        ...a,
+                                        [f.filename]: data.audioAnalysis,
+                                      }));
+                                    });
+                                }
                               }
                             }}
                             className="text-yellow-400"
@@ -430,6 +453,11 @@ export default function App() {
                         <div className="w-full h-2 bg-yellow-400 animate-pulse rounded" />
                       ) : (
                         <>
+                          {analysisData[f.filename] && (
+                            <div className="text-yellow-400 text-xs">
+                              BPM: {analysisData[f.filename].bpm.toFixed(1)} Key: {analysisData[f.filename].key}
+                            </div>
+                          )}
                           <div className="grid grid-cols-3 gap-2">
                             {stemsToShow.map((s: any) => {
                               const detail = STEM_DETAILS[s.name] || {
