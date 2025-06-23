@@ -64,11 +64,6 @@ type_defs = gql(
       model: String!,
       stems: [String!]!
     ): SeparationResponse!
-    paulStretch(
-      filename: String!,
-      stretch: Float!,
-      window: Float
-    ): DownloadResponse!
     deleteDownload(filename: String!): Boolean!
   }
   type Subscription {
@@ -342,24 +337,6 @@ def resolve_separate_stems(_, __, filename: str, model: str, stems: list[str]):
     logs = f"Using device: {device}{extra}\n" + proc.stdout + proc.stderr
     success = proc.returncode == 0
     return {"success": success, "logs": logs}
-
-
-@mutation.field("paulStretch")
-def resolve_paul_stretch(_, __, filename: str, stretch: float, window: float | None = None):
-    from .paulstretch import paulstretch_wav
-
-    src_path = MEDIA_DIR / filename
-    if not src_path.exists():
-        return {"success": False, "message": "file not found", "downloadUrl": None}
-    vid = Path(filename).stem
-    out_filename = f"{vid}_ps.wav"
-    out_path = MEDIA_DIR / out_filename
-    try:
-        paulstretch_wav(src_path, out_path, stretch=stretch, window=window or 0.25)
-    except Exception as e:
-        return {"success": False, "message": str(e), "downloadUrl": None}
-    rel_url = build_media_url(out_filename)
-    return {"success": True, "message": "", "downloadUrl": rel_url}
 
 
 @mutation.field("deleteDownload")
