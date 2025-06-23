@@ -52,14 +52,6 @@ const SEPARATE_STEMS_PROGRESS = gql`
   }
 `;
 
-const PAUL_STRETCH = gql`
-  mutation PaulStretch($filename: String!, $stretch: Float!, $window: Float) {
-    paulStretch(filename: $filename, stretch: $stretch, window: $window) {
-      success
-      downloadUrl
-    }
-  }
-`;
 
 const DELETE_DOWNLOAD = gql`
   mutation DeleteDownload($filename: String!) {
@@ -108,7 +100,6 @@ export default function App() {
   const [downloading, setDownloading] = useState(false);
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
-  const [paulQueue, setPaulQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showPlayers, setShowPlayers] = useState<Record<string, boolean>>({});
@@ -371,22 +362,6 @@ export default function App() {
                     },
                   });
                 };
-                const startPaul = () => {
-                  const factorStr = window.prompt("Stretch factor", "8");
-                  if (!factorStr) return;
-                  const factor = parseFloat(factorStr);
-                  if (!factor || factor <= 0) return;
-                  setPaulQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
-                  client
-                    .mutate({
-                      mutation: PAUL_STRETCH,
-                      variables: { filename: f.filename, stretch: factor },
-                    })
-                    .then(() => {
-                      setPaulQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
-                      refetch();
-                    });
-                };
                 const stemsToShow = stems;
 
                 return (
@@ -441,13 +416,6 @@ export default function App() {
                       className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
                           {inQueue ? "Separating..." : "Separate"}
-                        </button>
-                        <button
-                          onClick={startPaul}
-                          disabled={paulQueue[f.filename]}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
-                        >
-                          {paulQueue[f.filename] ? "Stretching..." : "Paulstretch"}
                         </button>
                         <button
                           onClick={() => deleteFile(f.filename)}
