@@ -6,6 +6,6 @@ declare module 'soundtouchjs' {
     percentagePlayed: number;
     connect(node: AudioNode): void;
     disconnect(): void;
-    on(event: string, cb: (data: any) => void): void;
+    on(event: string, cb: (data: unknown) => void): void;
   }
 }

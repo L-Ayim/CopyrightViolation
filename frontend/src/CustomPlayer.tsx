@@ -225,7 +225,10 @@ export function CustomPlayer({
       )}
 
       <label className="block text-xs">
-        Tempo ({currentBpm.toFixed(1)} BPM)
+        <div className="flex justify-between">
+          <span>Tempo</span>
+          <span>{currentBpm.toFixed(1)} BPM</span>
+        </div>
         <input
           type="range"
           min={0.5}
@@ -239,7 +242,12 @@ export function CustomPlayer({
       </label>
 
       <label className="block text-xs">
-        Pitch ({pitch} st, Key: {originalKey} → {shiftedKey})
+        <div className="flex justify-between">
+          <span>Pitch</span>
+          <span>
+            {pitch} st, {originalKey} → {shiftedKey}
+          </span>
+        </div>
         <input
           type="range"
           min={-12}
