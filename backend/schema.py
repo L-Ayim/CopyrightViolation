@@ -51,14 +51,8 @@ type_defs = gql(
     logs: String
   }
 
-  type AudioAnalysis {
-    bpm: Float!
-    key: String!
-  }
-
   type Query {
     downloads: [DownloadedFile!]!
-    audioAnalysis(filename: String!): AudioAnalysis!
   }
 
   type Mutation {
@@ -206,32 +200,6 @@ def resolve_downloads(_, __):
     return items
 
 
-@query.field("audioAnalysis")
-def resolve_audio_analysis(_, __, filename: str):
-    import librosa
-    path = MEDIA_DIR / filename
-    if not path.exists():
-        return {"bpm": 0.0, "key": ""}
-    y, sr = librosa.load(path)
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
-    note_names = [
-        "C",
-        "C#",
-        "D",
-        "D#",
-        "E",
-        "F",
-        "F#",
-        "G",
-        "G#",
-        "A",
-        "A#",
-        "B",
-    ]
-    key_index = chroma.mean(axis=1).argmax()
-    key = note_names[int(key_index)]
-    return {"bpm": float(tempo), "key": key}
 
 
 @mutation.field("downloadAudio")

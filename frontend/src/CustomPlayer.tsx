@@ -7,39 +7,15 @@ export interface Stem {
   url: string;
 }
 
-const NOTE_NAMES = [
-  "C",
-  "C#",
-  "D",
-  "D#",
-  "E",
-  "F",
-  "F#",
-  "G",
-  "G#",
-  "A",
-  "A#",
-  "B",
-];
-
-function shiftKey(key: string, semitones: number): string {
-  const idx = NOTE_NAMES.indexOf(key);
-  if (idx === -1) return key;
-  const n = NOTE_NAMES.length;
-  const newIndex = (idx + semitones % n + n) % n;
-  return NOTE_NAMES[newIndex];
-}
 
 export function CustomPlayer({
   stems,
   selected,
   preloaded = {},
-  analysis,
 }: {
   stems: Stem[];
   selected: string[];
   preloaded?: Record<string, AudioBuffer>;
-  analysis?: { bpm: number; key: string };
 }) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const buffersRef = useRef<Record<string, AudioBuffer>>({});
@@ -51,13 +27,8 @@ export function CustomPlayer({
   const [duration, setDuration] = useState(0);
   const [played, setPlayed] = useState(0);
   const [loop, setLoop] = useState(false);
-  const [tempo, setTempo] = useState(1);
-  const [pitch, setPitch] = useState(0);
 
-  const originalBpm = analysis?.bpm ?? 0;
-  const originalKey = analysis?.key ?? "";
-  const currentBpm = originalBpm ? originalBpm * tempo : 0;
-  const shiftedKey = originalKey ? shiftKey(originalKey, pitch) : "";
+
 
   // Initialise AudioContext
   useEffect(() => {
@@ -76,10 +47,10 @@ export function CustomPlayer({
         ...Object.values(preloaded).map((b) => b.duration)
       );
       if (maxDur > 0) {
-        setDuration((d) => Math.max(d, maxDur) / tempo);
+        setDuration((d) => Math.max(d, maxDur));
       }
     }
-  }, [preloaded, tempo]);
+  }, [preloaded]);
 
   // Load buffers when a stem is first selected
   useEffect(() => {
@@ -94,11 +65,11 @@ export function CustomPlayer({
           .then((data) => ctx.decodeAudioData(data))
           .then((buffer) => {
             buffersRef.current[name] = buffer;
-            setDuration(Math.max(duration, buffer.duration) / tempo);
+            setDuration(Math.max(duration, buffer.duration));
           });
       }
     });
-  }, [selected, stems, duration, tempo]);
+  }, [selected, stems, duration]);
 
   // Update gain when selection changes
   useEffect(() => {
@@ -107,12 +78,6 @@ export function CustomPlayer({
     });
   }, [selected]);
 
-  useEffect(() => {
-    Object.values(sourcesRef.current).forEach(({ shifter }) => {
-      shifter.tempo = tempo;
-      shifter.pitchSemitones = pitch;
-    });
-  }, [tempo, pitch]);
 
   const playAll = useCallback(
     (offset = pauseOffsetRef.current) => {
@@ -122,22 +87,20 @@ export function CustomPlayer({
       startTimeRef.current = now - offset;
       Object.entries(buffersRef.current).forEach(([name, buffer]) => {
       const shifter = new PitchShifter(ctx, buffer, 1024);
-      shifter.pitchSemitones = pitch;
-      shifter.tempo = tempo;
+      shifter.pitchSemitones = 0;
+      shifter.tempo = 1;
       const gain = ctx.createGain();
       gain.gain.value = selected.includes(name) ? 1 : 0;
       shifter.connect(gain);
       gain.connect(ctx.destination);
       shifter.percentagePlayed = offset / buffer.duration;
-      shifter.on("play", (d: { timePlayed: number }) => {
-        setPlayed(d.timePlayed);
+      shifter.on("play", (d: any) => {
+        setPlayed((d as any).timePlayed);
       });
       sourcesRef.current[name] = { shifter, gain };
     });
     setIsPlaying(true);
-  },
-    [pitch, tempo, selected]
-  );
+  }, [selected]);
 
   const pauseAll = useCallback(() => {
     const ctx = audioCtxRef.current;
@@ -218,47 +181,7 @@ export function CustomPlayer({
         {new Date(duration * 1000).toISOString().substr(14, 5)}
       </div>
 
-      {analysis && (
-        <div className="text-xs text-center">
-          Original {originalBpm.toFixed(1)} BPM, Key {originalKey}
-        </div>
-      )}
 
-      <label className="block text-xs">
-        <div className="flex justify-between">
-          <span>Tempo</span>
-          <span>{currentBpm.toFixed(1)} BPM</span>
-        </div>
-        <input
-          type="range"
-          min={0.5}
-          max={2}
-          step={0.01}
-          value={tempo}
-          onChange={(e) => setTempo(+e.target.value)}
-          className="w-full"
-          style={{ accentColor: "#facc15" }}
-        />
-      </label>
-
-      <label className="block text-xs">
-        <div className="flex justify-between">
-          <span>Pitch</span>
-          <span>
-            {pitch} st, {originalKey} → {shiftedKey}
-          </span>
-        </div>
-        <input
-          type="range"
-          min={-12}
-          max={12}
-          step={1}
-          value={pitch}
-          onChange={(e) => setPitch(+e.target.value)}
-          className="w-full"
-          style={{ accentColor: "#facc15" }}
-        />
-      </label>
     </div>
   );
 }
