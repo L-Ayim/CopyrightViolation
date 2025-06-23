@@ -29,14 +29,6 @@ const GET_DOWNLOADS = gql`
   }
 `;
 
-const GET_AUDIO_ANALYSIS = gql`
-  query AudioAnalysis($filename: String!) {
-    audioAnalysis(filename: $filename) {
-      bpm
-      key
-    }
-  }
-`;
 
 const DOWNLOAD_AUDIO_PROGRESS = gql`
   subscription DownloadAudioProgress($url: String!) {
@@ -127,7 +119,6 @@ export default function App() {
   });
   const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
   const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
-  const [analysisData, setAnalysisData] = useState<Record<string, { bpm: number; key: string }>>({});
 
   const searchTerm = search.trim().toLowerCase();
 
@@ -426,19 +417,6 @@ export default function App() {
                               }));
                               if (willExpand) {
                                 preloadStems(f.filename, stemsToShow);
-                                if (!analysisData[f.filename]) {
-                                  client
-                                    .query({
-                                      query: GET_AUDIO_ANALYSIS,
-                                      variables: { filename: f.filename },
-                                    })
-                                    .then(({ data }) => {
-                                      setAnalysisData((a) => ({
-                                        ...a,
-                                        [f.filename]: data.audioAnalysis,
-                                      }));
-                                    });
-                                }
                               }
                             }}
                             className="text-yellow-400"
@@ -486,11 +464,6 @@ export default function App() {
                         <div className="w-full h-2 bg-yellow-400 animate-pulse rounded" />
                       ) : (
                         <>
-                          {analysisData[f.filename] && (
-                            <div className="text-yellow-400 text-xs">
-                              BPM: {analysisData[f.filename].bpm.toFixed(1)} Key: {analysisData[f.filename].key}
-                            </div>
-                          )}
                           <div className="grid grid-cols-3 gap-2">
                             {stemsToShow.map((s: any) => {
                               const detail = STEM_DETAILS[s.name] || {
@@ -532,7 +505,6 @@ export default function App() {
                                 stems={stemsToShow}
                                 selected={Object.keys(sel).filter((k) => sel[k])}
                                 preloaded={buffersRef.current[f.filename] || {}}
-                                analysis={analysisData[f.filename]}
                               />
                             )}
                         </>
