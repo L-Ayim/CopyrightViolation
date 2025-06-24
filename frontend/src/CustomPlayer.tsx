@@ -94,8 +94,9 @@ export function CustomPlayer({
       shifter.connect(gain);
       gain.connect(ctx.destination);
       shifter.percentagePlayed = offset / buffer.duration;
-      shifter.on("play", (d: any) => {
-        setPlayed((d as any).timePlayed);
+      shifter.on("play", (d: unknown) => {
+        const data = d as { timePlayed: number };
+        setPlayed(data.timePlayed);
       });
       sourcesRef.current[name] = { shifter, gain };
     });
