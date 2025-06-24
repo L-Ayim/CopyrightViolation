@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { CustomPlayer, type Stem } from "./CustomPlayer";
 import { gql, useQuery, useApolloClient } from "@apollo/client";
 import {
@@ -345,6 +345,19 @@ export default function App() {
                 });
               };
 
+              const handleDragStart = (
+                e: React.DragEvent<HTMLButtonElement>,
+                name: string
+              ) => {
+                const stem = stems.find((s: any) => s.name === name);
+                if (!stem) return;
+                const downloadName = `${f.title} (${name}).mp3`;
+                e.dataTransfer.setData(
+                  "DownloadURL",
+                  `audio/mpeg:${downloadName}:${stem.url}`
+                );
+              };
+
               const isExpanded = !!expanded[f.filename];
               const isShowingPlayers = !!showPlayers[f.filename];
               const togglePlayers = () => {
@@ -460,6 +473,8 @@ export default function App() {
                                 <button
                                   key={s.name}
                                   onClick={() => toggle(s.name)}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, s.name)}
                                   className={`border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 ${selectedStem ? "bg-yellow-400 text-black" : "text-yellow-400"}`}
                                 >
                                   <Icon className="w-6 h-6" />
