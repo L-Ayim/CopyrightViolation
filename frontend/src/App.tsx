@@ -144,6 +144,10 @@ export default function App() {
         next() {
           // ignore progress text
         },
+        error() {
+          // reset state on error so the UI doesn't get stuck
+          setDownloading(false);
+        },
         complete() {
           setDownloading(false);
           refetch();
@@ -159,6 +163,9 @@ export default function App() {
       .subscribe({
         next() {
           // ignore progress text
+        },
+        error() {
+          setDownloading(false);
         },
         complete() {
           setDownloading(false);
@@ -179,6 +186,9 @@ export default function App() {
         setUploading(false);
         setUploadFile(null);
         refetch();
+      })
+      .catch(() => {
+        setUploading(false);
       });
   };
 
@@ -187,6 +197,9 @@ export default function App() {
       .mutate({ mutation: DELETE_DOWNLOAD, variables: { filename } })
       .then(() => {
         refetch();
+      })
+      .catch(() => {
+        /* ignore errors */
       });
   };
 
@@ -354,6 +367,9 @@ export default function App() {
                   .subscribe({
                     next() {
                       // ignore progress text
+                    },
+                    error() {
+                      setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
                     },
                     complete() {
                       setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
