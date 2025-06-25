@@ -399,8 +399,11 @@ export default function App() {
                   [f.filename]: !isShowingPlayers,
                 }));
               };
+              const missingStems = AVAILABLE_STEMS.filter(
+                (name) => !stems.some((s: any) => s.name === name)
+              );
               const startSeparation = () => {
-                const toSeparate = AVAILABLE_STEMS;
+                const toSeparate = missingStems.length ? missingStems : AVAILABLE_STEMS;
                 setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
                 client
                   .subscribe({
@@ -474,7 +477,11 @@ export default function App() {
                           disabled={inQueue}
                           className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
-                          {inQueue ? "Separating..." : "Separate"}
+                          {inQueue
+                            ? "Separating..."
+                            : missingStems.length
+                            ? "Separate Missing"
+                            : "Separate All"}
                         </button>
                         <button
                           onClick={() => openStems(f.filename)}
@@ -527,6 +534,22 @@ export default function App() {
                                   <Icon className="w-6 h-6" />
                                   <span className="text-xs font-semibold">{detail.label}</span>
                                 </a>
+                              );
+                            })}
+                            {missingStems.map((name) => {
+                              const detail = STEM_DETAILS[name] || {
+                                label: name,
+                                Icon: FaQuestionCircle,
+                              };
+                              const Icon = detail.Icon;
+                              return (
+                                <div
+                                  key={name}
+                                  className="border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 opacity-50 cursor-not-allowed"
+                                >
+                                  <Icon className="w-6 h-6" />
+                                  <span className="text-xs font-semibold">{detail.label}</span>
+                                </div>
                               );
                             })}
                           </div>
