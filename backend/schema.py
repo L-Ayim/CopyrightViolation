@@ -6,6 +6,8 @@ from pathlib import Path
 import sys
 import shutil
 import secrets
+import os
+import platform
 
 from ariadne import (
     make_executable_schema,
@@ -65,6 +67,7 @@ type_defs = gql(
       stems: [String!]!
     ): SeparationResponse!
     deleteDownload(filename: String!): Boolean!
+    openStemsFolder(filename: String!): Boolean!
   }
   type Subscription {
     downloadAudioProgress(url: String!): String!
@@ -112,6 +115,28 @@ def read_metadata(vid: str):
     if not meta_path.exists():
         return {"title": vid, "thumbnail": None}
     return json.loads(meta_path.read_text())
+
+
+def open_folder(path: Path):
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+        return True
+    except Exception:
+        return False
+
+
+@mutation.field("openStemsFolder")
+def resolve_open_stems_folder(_, __, filename: str):
+    vid = Path(filename).stem
+    stems_dir = MEDIA_DIR / vid / "stems"
+    if stems_dir.exists():
+        return open_folder(stems_dir)
+    return False
 
 
 async def stream_process(cmd: list[str]):

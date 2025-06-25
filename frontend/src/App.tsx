@@ -59,6 +59,12 @@ const DELETE_DOWNLOAD = gql`
   }
 `;
 
+const OPEN_STEMS_FOLDER = gql`
+  mutation OpenStemsFolder($filename: String!) {
+    openStemsFolder(filename: $filename)
+  }
+`;
+
 const UPLOAD_AUDIO = gql`
   mutation UploadAudio($file: Upload!, $title: String) {
     uploadAudio(file: $file, title: $title) {
@@ -134,6 +140,14 @@ export default function App() {
 
 
   const anyLoading = downloading || uploading;
+
+  const openStems = (filename: string) => {
+    client
+      .mutate({ mutation: OPEN_STEMS_FOLDER, variables: { filename } })
+      .catch(() => {
+        /* ignore errors */
+      });
+  };
 
   const startDownloadAudio = () => {
     if (!videoId) return;
@@ -345,18 +359,7 @@ export default function App() {
                 });
               };
 
-              const handleDragStart = (
-                e: React.DragEvent<HTMLButtonElement>,
-                name: string
-              ) => {
-                const stem = stems.find((s: any) => s.name === name);
-                if (!stem) return;
-                const downloadName = `${f.title} (${name}).mp3`;
-                e.dataTransfer.setData(
-                  "DownloadURL",
-                  `audio/mpeg:${downloadName}:${stem.url}`
-                );
-              };
+
 
               const isExpanded = !!expanded[f.filename];
               const isShowingPlayers = !!showPlayers[f.filename];
@@ -447,6 +450,12 @@ export default function App() {
                           {inQueue ? "Separating..." : "Separate"}
                         </button>
                         <button
+                          onClick={() => openStems(f.filename)}
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
+                        >
+                          Open Folder
+                        </button>
+                        <button
                           onClick={() => deleteFile(f.filename)}
                           className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
                         >
@@ -473,8 +482,6 @@ export default function App() {
                                 <button
                                   key={s.name}
                                   onClick={() => toggle(s.name)}
-                                  draggable
-                                  onDragStart={(e) => handleDragStart(e, s.name)}
                                   className={`border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 ${selectedStem ? "bg-yellow-400 text-black" : "text-yellow-400"}`}
                                 >
                                   <Icon className="w-6 h-6" />
