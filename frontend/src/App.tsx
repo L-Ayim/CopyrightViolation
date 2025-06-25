@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CustomPlayer, type Stem } from "./CustomPlayer";
 import { gql, useQuery, useApolloClient } from "@apollo/client";
 import {
@@ -97,7 +97,7 @@ function extractVideoId(url: string): string | null {
 export default function App() {
   const [url, setUrl] = useState("");
   const [videoId, setVideoId] = useState<string | null>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
   const { data: dlData, refetch } = useQuery(GET_DOWNLOADS);
@@ -107,7 +107,6 @@ export default function App() {
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
-  const [separateSelected, setSeparateSelected] = useState<Record<string, Record<string, boolean>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showPlayers, setShowPlayers] = useState<Record<string, boolean>>({});
   const [dragOver, setDragOver] = useState(false);
@@ -191,16 +190,19 @@ export default function App() {
   };
 
   const startUploadAudio = () => {
-    if (!uploadFile) return;
+    if (uploadFiles.length === 0) return;
     setUploading(true);
-    client
-      .mutate({
-        mutation: UPLOAD_AUDIO,
-        variables: { file: uploadFile, title: uploadFile.name },
-      })
+    Promise.all(
+      uploadFiles.map((file) =>
+        client.mutate({
+          mutation: UPLOAD_AUDIO,
+          variables: { file, title: file.name },
+        })
+      )
+    )
       .then(() => {
         setUploading(false);
-        setUploadFile(null);
+        setUploadFiles([]);
         refetch();
       })
       .catch(() => {
@@ -310,24 +312,29 @@ export default function App() {
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          const file = e.dataTransfer.files?.[0];
-          if (file) {
-            setUploadFile(file);
+          const files = Array.from(e.dataTransfer.files || []);
+          if (files.length) {
+            setUploadFiles((p) => [...p, ...files]);
           }
         }}
       >
         <input
           type="file"
           accept="audio/*"
-          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+          multiple
+          onChange={(e) =>
+            setUploadFiles(Array.from(e.target.files || []))
+          }
           className="w-full text-yellow-400"
         />
-        {uploadFile && (
-          <span className="text-yellow-400 text-sm truncate">{uploadFile.name}</span>
+        {uploadFiles.length > 0 && (
+          <span className="text-yellow-400 text-sm">
+            {uploadFiles.length} file{uploadFiles.length > 1 ? "s" : ""} selected
+          </span>
         )}
         <button
           onClick={startUploadAudio}
-          disabled={anyLoading || !uploadFile}
+          disabled={anyLoading || uploadFiles.length === 0}
           className="bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
         >
           Upload Audio
@@ -392,20 +399,16 @@ export default function App() {
                   [f.filename]: !isShowingPlayers,
                 }));
               };
-                const startSeparation = () => {
-                  const sepSel = separateSelected[f.filename] || {};
-                  const chosen = Object.entries(sepSel)
-                    .filter(([, v]) => v)
-                    .map(([k]) => k);
-                  const toSeparate = chosen.length > 0 ? chosen : AVAILABLE_STEMS;
-                  setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
-                  client
-                    .subscribe({
-                      query: SEPARATE_STEMS_PROGRESS,
-                      variables: {
-                        filename: f.filename,
-                        model: "htdemucs_6s",
-                        stems: toSeparate,
+              const startSeparation = () => {
+                const toSeparate = AVAILABLE_STEMS;
+                setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
+                client
+                  .subscribe({
+                    query: SEPARATE_STEMS_PROGRESS,
+                    variables: {
+                      filename: f.filename,
+                      model: "htdemucs_6s",
+                      stems: toSeparate,
                       },
                     })
                     .subscribe({
@@ -422,11 +425,7 @@ export default function App() {
                       },
                     });
                 };
-                const stemsToShow: Stem[] =
-                  stems.length > 0
-                    ? stems
-                    : AVAILABLE_STEMS.map((n) => ({ name: n, url: "" }));
-                const sepSel = separateSelected[f.filename] || {};
+              const stemsToShow: Stem[] = stems;
                 
                 return (
                   <div
@@ -505,76 +504,54 @@ export default function App() {
                                 Icon: FaQuestionCircle,
                               };
                               const Icon = detail.Icon;
-                              const selState = stems.length > 0 ? sel : sepSel;
-                              const toggleFn = stems.length > 0 ? toggle : (name: string) => {
-                                setSeparateSelected((p: Record<string, Record<string, boolean>>) => ({
-                                  ...p,
-                                  [f.filename]: { ...sepSel, [name]: !sepSel[name] },
-                                }));
-                              };
-                              const selectedStem = !!selState[s.name];
+                              const selectedStem = !!sel[s.name];
                               return (
-                                <button
+                                <a
                                   key={s.name}
-                                  onClick={() => toggleFn(s.name)}
+                                  href={s.url}
+                                  download={`${f.title} (${s.name}).mp3`}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData("text/uri-list", s.url);
+                                    e.dataTransfer.setData(
+                                      "DownloadURL",
+                                      `audio/mp3:${f.title} (${s.name}).mp3:${s.url}`
+                                    );
+                                  }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    toggle(s.name);
+                                  }}
                                   className={`border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 ${selectedStem ? "bg-yellow-400 text-black" : "text-yellow-400"}`}
                                 >
                                   <Icon className="w-6 h-6" />
                                   <span className="text-xs font-semibold">{detail.label}</span>
-                                </button>
+                                </a>
                               );
                             })}
                           </div>
-                          {stems.length > 0 ? (
-                            <>
-                              {Object.values(sel).some(Boolean) && (
-                                <div className="flex space-x-2">
-                                  <button
-                                    onClick={downloadSelected}
-                                    className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
-                                  >
-                                    Download Selected
-                                  </button>
-                                  <button
-                                    onClick={togglePlayers}
-                                    className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
-                                  >
-                                    {isShowingPlayers ? "Hide Players" : "Play Selected"}
-                                  </button>
-                                </div>
-                              )}
-                              {isShowingPlayers && (
-                                <CustomPlayer
-                                  stems={stemsToShow}
-                                  selected={Object.keys(sel).filter((k) => sel[k])}
-                                  preloaded={buffersRef.current[f.filename] || {}}
-                                />
-                              )}
-                            </>
-                          ) : (
+                          {Object.values(sel).some(Boolean) && (
                             <div className="flex space-x-2">
                               <button
-                                onClick={() =>
-                                  setSeparateSelected((p: Record<string, Record<string, boolean>>) => ({
-                                    ...p,
-                                    [f.filename]: AVAILABLE_STEMS.reduce(
-                                      (acc, n) => ({ ...acc, [n]: true }),
-                                      {}
-                                    ),
-                                  }))
-                                }
+                                onClick={downloadSelected}
                                 className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
                               >
-                                Select All
+                                Download Selected
                               </button>
                               <button
-                                onClick={startSeparation}
-                                disabled={inQueue}
-                                className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
+                                onClick={togglePlayers}
+                                className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
                               >
-                                {inQueue ? "Separating..." : "Separate Selected"}
+                                {isShowingPlayers ? "Hide Players" : "Play Selected"}
                               </button>
                             </div>
+                          )}
+                          {isShowingPlayers && (
+                            <CustomPlayer
+                              stems={stemsToShow}
+                              selected={Object.keys(sel).filter((k) => sel[k])}
+                              preloaded={buffersRef.current[f.filename] || {}}
+                            />
                           )}
                         </>
                       )}
