@@ -135,6 +135,9 @@ def open_folder(path: Path):
 def resolve_open_stems_folder(_, __, filename: str):
     vid = Path(filename).stem
     stems_dir = MEDIA_DIR / vid / "stems"
+    htdemucs_path = stems_dir / "htdemucs_6s"
+    if htdemucs_path.exists():
+        return open_folder(htdemucs_path)
     if stems_dir.exists():
         return open_folder(stems_dir)
     return False
