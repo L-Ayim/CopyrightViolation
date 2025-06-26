@@ -102,6 +102,14 @@ function extractVideoId(url: string): string | null {
   }
 }
 
+function buildFileUri(path: string): string {
+  let formatted = path.replace(/\\/g, "/");
+  if (!formatted.startsWith("/")) {
+    formatted = "/" + formatted;
+  }
+  return `file://${encodeURI(formatted)}`;
+}
+
 export default function App() {
   const [url, setUrl] = useState("");
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -519,10 +527,11 @@ export default function App() {
                                 draggable
                                 onDragStart={(e) => {
                                     const path = s.path;
-                                    e.dataTransfer.setData("text/uri-list", `file://${path}`);
+                                    const fileUrl = buildFileUri(path);
+                                    e.dataTransfer.setData("text/uri-list", fileUrl);
                                     e.dataTransfer.setData(
                                       "DownloadURL",
-                                      `audio/mp3:${f.title} (${s.name}).mp3:file://${path}`
+                                      `audio/mp3:${f.title} (${s.name}).mp3:${fileUrl}`
                                     );
                                     e.dataTransfer.setData("text/plain", path);
                                   }}
