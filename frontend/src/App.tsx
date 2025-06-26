@@ -124,8 +124,6 @@ export default function App() {
   });
   const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
   const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
-  const [choosing, setChoosing] = useState<Record<string, boolean>>({});
-  const [choiceStems, setChoiceStems] = useState<Record<string, Record<string, boolean>>>({});
 
   const searchTerm = search.trim().toLowerCase();
 
@@ -379,7 +377,7 @@ export default function App() {
                     const stem = stems.find((s: any) => s.name === name);
                     if (stem) {
                       const a = document.createElement("a");
-                      a.href = stem.url;
+                      a.href = new URL(stem.url, window.location.origin).href;
                       a.download = `${f.title} (${name}).mp3`;
                       a.click();
                     }
@@ -487,25 +485,6 @@ export default function App() {
                             : "Separate All"}
                         </button>
                         <button
-                          onClick={() => {
-                            const willShow = !choosing[f.filename];
-                            setChoosing((p: Record<string, boolean>) => ({
-                              ...p,
-                              [f.filename]: willShow,
-                            }));
-                            if (willShow && !choiceStems[f.filename]) {
-                              const def: Record<string, boolean> = {};
-                              AVAILABLE_STEMS.forEach((n) => {
-                                def[n] = missingStems.includes(n);
-                              });
-                              setChoiceStems((p) => ({ ...p, [f.filename]: def }));
-                            }
-                          }}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
-                        >
-                          {choosing[f.filename] ? "Cancel" : "Choose Stems"}
-                        </button>
-                        <button
                           onClick={() => openStems(f.filename)}
                           className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
                         >
@@ -518,54 +497,7 @@ export default function App() {
                           Delete
                         </button>
                       </div>
-                      {choosing[f.filename] && (
-                        <div className="mt-2 flex flex-col space-y-2">
-                          <div className="grid grid-cols-3 gap-2">
-                            {AVAILABLE_STEMS.map((name) => {
-                              const detail = STEM_DETAILS[name] || {
-                                label: name,
-                                Icon: FaQuestionCircle,
-                              };
-                              const Icon = detail.Icon;
-                              const checked = choiceStems[f.filename]?.[name] || false;
-                              return (
-                                <label
-                                  key={name}
-                                  className="flex items-center space-x-1 text-yellow-400"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() =>
-                                      setChoiceStems((p) => ({
-                                        ...p,
-                                        [f.filename]: {
-                                          ...(p[f.filename] || {}),
-                                          [name]: !checked,
-                                        },
-                                      }))
-                                    }
-                                  />
-                                  <Icon className="w-4 h-4" />
-                                  <span className="text-xs">{detail.label}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                          <button
-                            onClick={() => {
-                              setChoosing((p) => ({ ...p, [f.filename]: false }));
-                              const selectedNames = Object.keys(
-                                choiceStems[f.filename] || {}
-                              ).filter((n) => choiceStems[f.filename][n]);
-                              startSeparation(selectedNames);
-                            }}
-                            className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
-                          >
-                            Start Separation
-                          </button>
-                        </div>
-                      )}
+
                     </div>
                   </div>
                   {isExpanded && stemsToShow.length > 0 && (
@@ -585,16 +517,17 @@ export default function App() {
                               return (
                                 <a
                                   key={s.name}
-                                  href={s.url}
+                                  href={new URL(s.url, window.location.origin).href}
                                   download={`${f.title} (${s.name}).mp3`}
                                   draggable
                                   onDragStart={(e) => {
-                                    e.dataTransfer.setData("text/uri-list", s.url);
+                                    const absUrl = new URL(s.url, window.location.origin).href;
+                                    e.dataTransfer.setData("text/uri-list", absUrl);
                                     e.dataTransfer.setData(
                                       "DownloadURL",
-                                      `audio/mp3:${f.title} (${s.name}).mp3:${s.url}`
+                                      `audio/mp3:${f.title} (${s.name}).mp3:${absUrl}`
                                     );
-                                    e.dataTransfer.setData("text/plain", s.url);
+                                    e.dataTransfer.setData("text/plain", absUrl);
                                   }}
                                   onClick={(e) => {
                                     e.preventDefault();
