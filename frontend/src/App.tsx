@@ -30,17 +30,24 @@ const GET_DOWNLOADS = gql`
 `;
 
 
-const DOWNLOAD_AUDIO_PROGRESS = gql`
-  subscription DownloadAudioProgress($url: String!) {
-    downloadAudioProgress(url: $url)
+const DOWNLOAD_AUDIO = gql`
+  mutation DownloadAudio($url: String!) {
+    downloadAudio(url: $url) {
+      success
+      downloadUrl
+    }
   }
 `;
 
-const DOWNLOAD_VIDEO_PROGRESS = gql`
-  subscription DownloadVideoProgress($url: String!) {
-    downloadVideoProgress(url: $url)
+const DOWNLOAD_VIDEO = gql`
+  mutation DownloadVideo($url: String!) {
+    downloadVideo(url: $url) {
+      success
+      downloadUrl
+    }
   }
 `;
+
 
 const SEPARATE_STEMS_PROGRESS = gql`
   subscription SeparateStemsProgress(
@@ -156,19 +163,13 @@ export default function App() {
     if (!videoId) return;
     setDownloading(true);
     client
-      .subscribe({ query: DOWNLOAD_AUDIO_PROGRESS, variables: { url } })
-      .subscribe({
-        next() {
-          // ignore progress text
-        },
-        error() {
-          // reset state on error so the UI doesn't get stuck
-          setDownloading(false);
-        },
-        complete() {
-          setDownloading(false);
-          refetch();
-        },
+      .mutate({ mutation: DOWNLOAD_AUDIO, variables: { url } })
+      .then(() => {
+        setDownloading(false);
+        refetch();
+      })
+      .catch(() => {
+        setDownloading(false);
       });
   };
 
@@ -176,18 +177,13 @@ export default function App() {
     if (!videoId) return;
     setDownloading(true);
     client
-      .subscribe({ query: DOWNLOAD_VIDEO_PROGRESS, variables: { url } })
-      .subscribe({
-        next() {
-          // ignore progress text
-        },
-        error() {
-          setDownloading(false);
-        },
-        complete() {
-          setDownloading(false);
-          refetch();
-        },
+      .mutate({ mutation: DOWNLOAD_VIDEO, variables: { url } })
+      .then(() => {
+        setDownloading(false);
+        refetch();
+      })
+      .catch(() => {
+        setDownloading(false);
       });
   };
 
