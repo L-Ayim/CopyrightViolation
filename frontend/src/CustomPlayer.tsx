@@ -5,6 +5,7 @@ import { PitchShifter } from "soundtouchjs";
 export interface Stem {
   name: string;
   url: string;
+  path: string;
 }
 
 

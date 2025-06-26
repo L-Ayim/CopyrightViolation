@@ -46,6 +46,7 @@ type_defs = gql(
   type Stem {
     name: String!
     url: String!
+    path: String!
   }
 
   type SeparationResponse {
@@ -204,6 +205,7 @@ def resolve_downloads(_, __):
                                 f"{vid}/stems/"
                                 f"{stem_file.relative_to(stems_dir)}"
                             ),
+                            "path": str(stem_file.resolve()),
                         }
                     )
 

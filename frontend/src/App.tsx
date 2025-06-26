@@ -24,6 +24,7 @@ const GET_DOWNLOADS = gql`
       stems {
         name
         url
+        path
       }
     }
   }
@@ -478,11 +479,7 @@ export default function App() {
                           disabled={inQueue}
                           className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
-                          {inQueue
-                            ? "Separating..."
-                            : missingStems.length
-                            ? "Separate Missing"
-                            : "Separate All"}
+                          {inQueue ? "Separating..." : "Separate"}
                         </button>
                         <button
                           onClick={() => openStems(f.filename)}
@@ -519,15 +516,15 @@ export default function App() {
                                   key={s.name}
                                   href={new URL(s.url, window.location.origin).href}
                                   download={`${f.title} (${s.name}).mp3`}
-                                  draggable
-                                  onDragStart={(e) => {
-                                    const absUrl = new URL(s.url, window.location.origin).href;
-                                    e.dataTransfer.setData("text/uri-list", absUrl);
+                                draggable
+                                onDragStart={(e) => {
+                                    const path = s.path;
+                                    e.dataTransfer.setData("text/uri-list", `file://${path}`);
                                     e.dataTransfer.setData(
                                       "DownloadURL",
-                                      `audio/mp3:${f.title} (${s.name}).mp3:${absUrl}`
+                                      `audio/mp3:${f.title} (${s.name}).mp3:file://${path}`
                                     );
-                                    e.dataTransfer.setData("text/plain", absUrl);
+                                    e.dataTransfer.setData("text/plain", path);
                                   }}
                                   onClick={(e) => {
                                     e.preventDefault();
