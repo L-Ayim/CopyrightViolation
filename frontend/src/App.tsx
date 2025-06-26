@@ -102,13 +102,7 @@ function extractVideoId(url: string): string | null {
   }
 }
 
-function buildFileUri(path: string): string {
-  let formatted = path.replace(/\\/g, "/");
-  if (!formatted.startsWith("/")) {
-    formatted = "/" + formatted;
-  }
-  return `file://${encodeURI(formatted)}`;
-}
+
 
 export default function App() {
   const [url, setUrl] = useState("");
@@ -511,7 +505,7 @@ export default function App() {
                         <div className="w-full h-2 bg-yellow-400 animate-pulse rounded" />
                       ) : (
                         <>
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
                             {stemsToShow.map((s: any) => {
                               const detail = STEM_DETAILS[s.name] || {
                                 label: s.name,
@@ -524,17 +518,6 @@ export default function App() {
                                   key={s.name}
                                   href={new URL(s.url, window.location.origin).href}
                                   download={`${f.title} (${s.name}).mp3`}
-                                draggable
-                                onDragStart={(e) => {
-                                    const path = s.path;
-                                    const fileUrl = buildFileUri(path);
-                                    e.dataTransfer.setData("text/uri-list", fileUrl);
-                                    e.dataTransfer.setData(
-                                      "DownloadURL",
-                                      `audio/mp3:${f.title} (${s.name}).mp3:${fileUrl}`
-                                    );
-                                    e.dataTransfer.setData("text/plain", path);
-                                  }}
                                   onClick={(e) => {
                                     e.preventDefault();
                                     toggle(s.name);

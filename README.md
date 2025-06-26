@@ -12,7 +12,6 @@ content you are legally allowed to process.
 * Separate audio into stems such as vocals, drums and bass
 * Automatically separates all stems for each track
 * Responsive React interface with a simple player for the isolated stems
-* Drag stem buttons to a DAW or the desktop to download automatically
 
 ## Requirements
 
