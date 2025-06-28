@@ -110,7 +110,10 @@ export default function App() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const { data: dlData, refetch } = useQuery(GET_DOWNLOADS);
+  const { data: dlData, refetch } = useQuery(GET_DOWNLOADS, {
+    fetchPolicy: "network-only",
+    pollInterval: 2000,
+  });
 
   const client = useApolloClient();
   const [downloading, setDownloading] = useState(false);
