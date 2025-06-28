@@ -49,6 +49,18 @@ const DOWNLOAD_VIDEO = gql`
   }
 `;
 
+const DOWNLOAD_AUDIO_PROGRESS = gql`
+  subscription DownloadAudioProgress($url: String!) {
+    downloadAudioProgress(url: $url)
+  }
+`;
+
+const DOWNLOAD_VIDEO_PROGRESS = gql`
+  subscription DownloadVideoProgress($url: String!) {
+    downloadVideoProgress(url: $url)
+  }
+`;
+
 
 const SEPARATE_STEMS_PROGRESS = gql`
   subscription SeparateStemsProgress(
@@ -130,6 +142,12 @@ export default function App() {
   });
   const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
   const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
+  const [logs, setLogs] = useState<string[]>([]);
+  const logsEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
 
   const searchTerm = search.trim().toLowerCase();
 
@@ -166,6 +184,18 @@ export default function App() {
   const startDownloadAudio = () => {
     if (!videoId) return;
     setDownloading(true);
+    setLogs([]);
+    client
+      .subscribe({
+        query: DOWNLOAD_AUDIO_PROGRESS,
+        variables: { url },
+      })
+      .subscribe({
+        next(res) {
+          const line = res.data?.downloadAudioProgress;
+          if (line) setLogs((p) => [...p, line]);
+        },
+      });
     client
       .mutate({ mutation: DOWNLOAD_AUDIO, variables: { url } })
       .then(() => {
@@ -180,6 +210,18 @@ export default function App() {
   const startDownloadVideo = () => {
     if (!videoId) return;
     setDownloading(true);
+    setLogs([]);
+    client
+      .subscribe({
+        query: DOWNLOAD_VIDEO_PROGRESS,
+        variables: { url },
+      })
+      .subscribe({
+        next(res) {
+          const line = res.data?.downloadVideoProgress;
+          if (line) setLogs((p) => [...p, line]);
+        },
+      });
     client
       .mutate({ mutation: DOWNLOAD_VIDEO, variables: { url } })
       .then(() => {
@@ -412,6 +454,7 @@ export default function App() {
                     ? missingStems
                     : AVAILABLE_STEMS;
                 setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
+                setLogs([]);
                 client
                   .subscribe({
                     query: SEPARATE_STEMS_PROGRESS,
@@ -422,8 +465,9 @@ export default function App() {
                       },
                     })
                     .subscribe({
-                      next() {
-                        // ignore progress text
+                      next(res) {
+                        const line = res.data?.separateStemsProgress;
+                        if (line) setLogs((p) => [...p, line]);
                       },
                       error() {
                         setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
@@ -620,6 +664,14 @@ export default function App() {
             })}
           </div>
       </main>
+      {logs.length > 0 && (
+        <pre
+          className="fixed bottom-0 left-0 right-0 max-h-60 overflow-auto bg-black text-yellow-400 p-2 text-xs"
+        >
+          {logs.join("")}
+          <div ref={logsEndRef} />
+        </pre>
+      )}
     </>
   );
 }
