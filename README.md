@@ -9,6 +9,7 @@ content you are legally allowed to process.
 ## Features
 
 * Download audio or video via `yt-dlp`
+* Files are saved with clean, unique names based on the title
 * Separate audio into stems such as vocals, drums and bass
 * Automatically separates all stems for each track
 * Responsive React interface with a simple player for the isolated stems
