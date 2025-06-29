@@ -142,6 +142,7 @@ export default function App() {
   });
   const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
   const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
+  const MAX_LOG_LINES = 100;
   const [logs, setLogs] = useState<string[]>([]);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -193,7 +194,7 @@ export default function App() {
       .subscribe({
         next(res) {
           const line = res.data?.downloadAudioProgress;
-          if (line) setLogs((p) => [...p, line]);
+          if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
         },
       });
     client
@@ -219,7 +220,7 @@ export default function App() {
       .subscribe({
         next(res) {
           const line = res.data?.downloadVideoProgress;
-          if (line) setLogs((p) => [...p, line]);
+          if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
         },
       });
     client
@@ -467,7 +468,7 @@ export default function App() {
                     .subscribe({
                       next(res) {
                         const line = res.data?.separateStemsProgress;
-                        if (line) setLogs((p) => [...p, line]);
+                        if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
                       },
                       error() {
                         setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
