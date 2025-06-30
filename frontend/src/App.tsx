@@ -528,6 +528,7 @@ export default function App() {
                           onClick={() => startSeparation()}
                           disabled={inQueue}
                           className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
+                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
                           {inQueue ? "Separating..." : "Separate"}
                         </button>
@@ -652,12 +653,6 @@ export default function App() {
                     >
                       Download
                     </a>
-                    <button
-                      onClick={() => deleteFile(f.filename)}
-                      className="mt-2 bg-black text-yellow-400 text-sm font-bold px-2 py-1 rounded hover:bg-gray-800 self-end"
-                    >
-                      Delete
-                    </button>
                   </div>
                   </div>
                 );
