@@ -203,12 +203,18 @@ export default function App() {
         complete() {
           client
             .mutate({ mutation: DOWNLOAD_AUDIO, variables: { url } })
-            .then(() => {
+            .then(({ data }) => {
+              const dl = data?.downloadAudio;
+              if (dl?.downloadUrl) {
+                const a = document.createElement("a");
+                a.href = dl.downloadUrl;
+                a.download = "";
+                a.click();
+              }
+            })
+            .finally(() => {
               setDownloading(false);
               refetch();
-            })
-            .catch(() => {
-              setDownloading(false);
             });
         },
       });
@@ -234,12 +240,18 @@ export default function App() {
         complete() {
           client
             .mutate({ mutation: DOWNLOAD_VIDEO, variables: { url } })
-            .then(() => {
+            .then(({ data }) => {
+              const dl = data?.downloadVideo;
+              if (dl?.downloadUrl) {
+                const a = document.createElement("a");
+                a.href = dl.downloadUrl;
+                a.download = "";
+                a.click();
+              }
+            })
+            .finally(() => {
               setDownloading(false);
               refetch();
-            })
-            .catch(() => {
-              setDownloading(false);
             });
         },
       });
@@ -672,12 +684,14 @@ export default function App() {
       </main>
       {logs.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-black text-yellow-400 text-xs border-t border-yellow-400">
-          <div
-            className="flex items-center justify-between p-2 cursor-pointer select-none"
-            onClick={() => setLogCollapsed((p) => !p)}
-          >
-            <span className="font-bold text-sm">Logs</span>
-            <button>{logCollapsed ? "▲" : "▼"}</button>
+          <div className="flex justify-end">
+            <div
+              className="flex items-center gap-1 p-2 cursor-pointer select-none"
+              onClick={() => setLogCollapsed((p) => !p)}
+            >
+              <span className="font-bold text-sm">Logs</span>
+              <button>{logCollapsed ? "▲" : "▼"}</button>
+            </div>
           </div>
           {!logCollapsed && (
             <pre className="max-h-60 overflow-auto p-2 log-scrollbar">
