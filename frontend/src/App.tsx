@@ -145,6 +145,7 @@ export default function App() {
   const MAX_LOG_LINES = 100;
   const [logs, setLogs] = useState<string[]>([]);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
+  const [logCollapsed, setLogCollapsed] = useState(false);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -196,15 +197,20 @@ export default function App() {
           const line = res.data?.downloadAudioProgress;
           if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
         },
-      });
-    client
-      .mutate({ mutation: DOWNLOAD_AUDIO, variables: { url } })
-      .then(() => {
-        setDownloading(false);
-        refetch();
-      })
-      .catch(() => {
-        setDownloading(false);
+        error() {
+          setDownloading(false);
+        },
+        complete() {
+          client
+            .mutate({ mutation: DOWNLOAD_AUDIO, variables: { url } })
+            .then(() => {
+              setDownloading(false);
+              refetch();
+            })
+            .catch(() => {
+              setDownloading(false);
+            });
+        },
       });
   };
 
@@ -222,15 +228,20 @@ export default function App() {
           const line = res.data?.downloadVideoProgress;
           if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
         },
-      });
-    client
-      .mutate({ mutation: DOWNLOAD_VIDEO, variables: { url } })
-      .then(() => {
-        setDownloading(false);
-        refetch();
-      })
-      .catch(() => {
-        setDownloading(false);
+        error() {
+          setDownloading(false);
+        },
+        complete() {
+          client
+            .mutate({ mutation: DOWNLOAD_VIDEO, variables: { url } })
+            .then(() => {
+              setDownloading(false);
+              refetch();
+            })
+            .catch(() => {
+              setDownloading(false);
+            });
+        },
       });
   };
 
@@ -661,12 +672,20 @@ export default function App() {
           </div>
       </main>
       {logs.length > 0 && (
-        <pre
-          className="fixed bottom-0 left-0 right-0 max-h-60 overflow-auto bg-black text-yellow-400 p-2 text-xs"
-        >
-          {logs.join("")}
-          <div ref={logsEndRef} />
-        </pre>
+        <div className="fixed bottom-0 left-0 right-0 bg-black text-yellow-400 text-xs">
+          <button
+            onClick={() => setLogCollapsed((p) => !p)}
+            className="absolute right-2 top-1"
+          >
+            {logCollapsed ? "▲" : "▼"}
+          </button>
+          {!logCollapsed && (
+            <pre className="max-h-60 overflow-auto p-2 log-scrollbar">
+              {logs.join("")}
+              <div ref={logsEndRef} />
+            </pre>
+          )}
+        </div>
       )}
     </>
   );

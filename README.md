@@ -53,6 +53,14 @@ npm run dev -- --host
 By default the backend listens on `http://localhost:8000` and the frontend on
 `http://localhost:5173`.
 
+### Download workflow
+
+When downloading audio or video the frontend first subscribes to a progress
+stream. The backend runs `yt-dlp` once and writes the final file using a unique
+name derived from the title. After the stream completes the frontend calls the
+matching mutation which simply returns the download URL instead of running
+`yt-dlp` again. This prevents duplicate downloads and leftover temporary files.
+
 ## GPU acceleration
 
 Install the CUDA build of PyTorch to use your GPU:
