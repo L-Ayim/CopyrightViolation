@@ -671,13 +671,14 @@ export default function App() {
           </div>
       </main>
       {logs.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-black text-yellow-400 text-xs">
-          <button
+        <div className="fixed bottom-0 left-0 right-0 bg-black text-yellow-400 text-xs border-t border-yellow-400">
+          <div
+            className="flex items-center justify-between p-2 cursor-pointer select-none"
             onClick={() => setLogCollapsed((p) => !p)}
-            className="absolute right-2 top-1"
           >
-            {logCollapsed ? "▲" : "▼"}
-          </button>
+            <span className="font-bold text-sm">Logs</span>
+            <button>{logCollapsed ? "▲" : "▼"}</button>
+          </div>
           {!logCollapsed && (
             <pre className="max-h-60 overflow-auto p-2 log-scrollbar">
               {logs.join("")}
