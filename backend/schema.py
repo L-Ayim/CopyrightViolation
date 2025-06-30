@@ -7,7 +7,6 @@ import sys
 import shutil
 import os
 import re
-import tempfile
 
 from ariadne import (
     make_executable_schema,
@@ -91,6 +90,9 @@ type_defs = gql(
 query = QueryType()
 mutation = MutationType()
 subscription = SubscriptionType()
+
+# Map video ID to the filename produced by the progress download
+DOWNLOAD_MAP: dict[str, str] = {}
 
 
 def extract_video_id(url: str) -> str:
@@ -264,87 +266,34 @@ def resolve_downloads(_, __):
 
 @mutation.field("downloadAudio")
 def resolve_download_audio(_, __, url: str):
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", dir=MEDIA_DIR)
-    tmp.close()
-    tmp_path = Path(tmp.name)
+    vid = extract_video_id(url)
+    base = DOWNLOAD_MAP.pop(vid, None)
+    if not base:
+        return {"success": False, "message": "No download", "downloadUrl": None}
 
-    proc = subprocess.run(
-        YT_DLP_BASE_ARGS
-        + [
-            "-x",
-            "--audio-format",
-            "mp3",
-            "-o",
-            str(tmp_path),
-            url,
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    info: dict | None = None
-    for line in proc.stdout.splitlines():
-        if line.strip().startswith("{"):
-            try:
-                info = json.loads(line)
-            except json.JSONDecodeError:
-                pass
-            break
-
-    title = info.get("title") if info else extract_video_id(url)
-    out_filename, vid = unique_filename(title, ".mp3")
+    out_filename = f"{base}.mp3"
     out_path = MEDIA_DIR / out_filename
-    if tmp_path.exists():
-        tmp_path.rename(out_path)
-    write_metadata(vid, info or {"title": title, "thumbnail": None})
-    message = proc.stdout + proc.stderr
-    success = proc.returncode == 0
-    rel_url = build_media_url(out_filename) if success else None
+    if not out_path.exists():
+        return {"success": False, "message": "File missing", "downloadUrl": None}
 
-    return {"success": success, "message": message, "downloadUrl": rel_url}
+    rel_url = build_media_url(out_filename)
+    return {"success": True, "message": "", "downloadUrl": rel_url}
 
 
 @mutation.field("downloadVideo")
 def resolve_download_video(_, __, url: str):
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4", dir=MEDIA_DIR)
-    tmp.close()
-    tmp_path = Path(tmp.name)
+    vid = extract_video_id(url)
+    base = DOWNLOAD_MAP.pop(vid, None)
+    if not base:
+        return {"success": False, "message": "No download", "downloadUrl": None}
 
-    proc = subprocess.run(
-        YT_DLP_BASE_ARGS
-        + [
-            "-f",
-            "bestvideo+bestaudio",
-            "--merge-output-format",
-            "mp4",
-            "-o",
-            str(tmp_path),
-            url,
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    info: dict | None = None
-    for line in proc.stdout.splitlines():
-        if line.strip().startswith("{"):
-            try:
-                info = json.loads(line)
-            except json.JSONDecodeError:
-                pass
-            break
-
-    title = info.get("title") if info else extract_video_id(url)
-    out_filename, vid = unique_filename(title, ".mp4")
+    out_filename = f"{base}.mp4"
     out_path = MEDIA_DIR / out_filename
-    if tmp_path.exists():
-        tmp_path.rename(out_path)
-    write_metadata(vid, info or {"title": title, "thumbnail": None})
-    message = proc.stdout + proc.stderr
-    success = proc.returncode == 0
-    rel_url = build_media_url(out_filename) if success else None
+    if not out_path.exists():
+        return {"success": False, "message": "File missing", "downloadUrl": None}
 
-    return {"success": success, "message": message, "downloadUrl": rel_url}
+    rel_url = build_media_url(out_filename)
+    return {"success": True, "message": "", "downloadUrl": rel_url}
 
 
 @mutation.field("uploadAudio")
@@ -408,8 +357,11 @@ def resolve_separate_stems(_, __, filename: str, model: str, stems: list[str]):
 @subscription.source("downloadAudioProgress")
 async def stream_download_audio(_, info, url: str):
     vid = extract_video_id(url)
-    out_filename = f"{vid}.mp3"
-    out_path = MEDIA_DIR / out_filename
+    tmp_path = MEDIA_DIR / f"{vid}.tmp.mp3"
+    for p in [MEDIA_DIR / f"{vid}.mp3", tmp_path]:
+        if p.exists():
+            p.unlink()
+
     cmd = (
         YT_DLP_BASE_ARGS
         + [
@@ -417,20 +369,29 @@ async def stream_download_audio(_, info, url: str):
             "--audio-format",
             "mp3",
             "-o",
-            str(out_path),
+            str(tmp_path),
             url,
         ]
     )
     seen_info = False
+    info_data: dict | None = None
     async for line in stream_process(cmd):
         if not seen_info and line.strip().startswith("{"):
             try:
-                write_metadata(vid, json.loads(line))
+                info_data = json.loads(line)
                 seen_info = True
             except json.JSONDecodeError:
                 pass
             continue
         yield line
+
+    title = info_data.get("title") if info_data else vid
+    out_filename, base = unique_filename(title, ".mp3")
+    out_path = MEDIA_DIR / out_filename
+    if tmp_path.exists():
+        tmp_path.rename(out_path)
+    write_metadata(base, info_data or {"title": title, "thumbnail": None})
+    DOWNLOAD_MAP[vid] = base
 
 
 @subscription.field("downloadAudioProgress")
@@ -441,8 +402,11 @@ def resolve_download_audio_progress(line, info, url: str):
 @subscription.source("downloadVideoProgress")
 async def stream_download_video(_, info, url: str):
     vid = extract_video_id(url)
-    out_filename = f"{vid}.mp4"
-    out_path = MEDIA_DIR / out_filename
+    tmp_path = MEDIA_DIR / f"{vid}.tmp.mp4"
+    for p in [MEDIA_DIR / f"{vid}.mp4", tmp_path]:
+        if p.exists():
+            p.unlink()
+
     cmd = (
         YT_DLP_BASE_ARGS
         + [
@@ -451,20 +415,29 @@ async def stream_download_video(_, info, url: str):
             "--merge-output-format",
             "mp4",
             "-o",
-            str(out_path),
+            str(tmp_path),
             url,
         ]
     )
     seen_info = False
+    info_data: dict | None = None
     async for line in stream_process(cmd):
         if not seen_info and line.strip().startswith("{"):
             try:
-                write_metadata(vid, json.loads(line))
+                info_data = json.loads(line)
                 seen_info = True
             except json.JSONDecodeError:
                 pass
             continue
         yield line
+
+    title = info_data.get("title") if info_data else vid
+    out_filename, base = unique_filename(title, ".mp4")
+    out_path = MEDIA_DIR / out_filename
+    if tmp_path.exists():
+        tmp_path.rename(out_path)
+    write_metadata(base, info_data or {"title": title, "thumbnail": None})
+    DOWNLOAD_MAP[vid] = base
 
 
 @subscription.field("downloadVideoProgress")

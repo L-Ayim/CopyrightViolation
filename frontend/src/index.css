@@ -3,3 +3,22 @@
 @tailwind components;
 @tailwind utilities;
 
+.log-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.log-scrollbar::-webkit-scrollbar-track {
+  background: #000;
+}
+
+.log-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #facc15;
+  border-radius: 4px;
+}
+
+.log-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #facc15 #000;
+}
+
