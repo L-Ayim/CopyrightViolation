@@ -75,3 +75,14 @@ PY
 If this prints `CUDA available: True` the separation process will run on the GPU.
 If not, ensure `nvidia-smi` is installed and in your `PATH` or force the CUDA
 build with `FORCE_CUDA=1` when running the startup script.
+
+## Avoid YouTube rate limits
+
+Downloading many tracks quickly may trigger temporary rate limits on YouTube.
+Set the `YT_DLP_SLEEP` environment variable to wait between requests:
+
+```bash
+export YT_DLP_SLEEP=2
+```
+
+The value is the number of seconds to sleep before each `yt-dlp` request.

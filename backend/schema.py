@@ -24,6 +24,12 @@ from django.conf import settings
 MEDIA_DIR = Path(settings.MEDIA_ROOT)
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Optional delay between yt-dlp requests to avoid YouTube rate limits
+YT_DLP_SLEEP = float(os.getenv("YT_DLP_SLEEP", "0"))
+YT_DLP_BASE_ARGS = ["yt-dlp", "--print-json", "--newline"]
+if YT_DLP_SLEEP > 0:
+    YT_DLP_BASE_ARGS += ["--sleep-requests", str(YT_DLP_SLEEP)]
+
 type_defs = gql(
     """
   scalar Upload
@@ -166,18 +172,23 @@ def resolve_open_stems_folder(_, __, filename: str):
     return False
 
 
-async def stream_process(cmd: list[str]):
+async def stream_process(cmd: list[str], env: dict | None = None):
     """Yield output lines from a subprocess as they are produced.
 
     On platforms where ``asyncio`` cannot create subprocess transports (e.g.
     some Windows event loops), fall back to a synchronous ``subprocess``
     running in the current thread and yield its output asynchronously.
     """
+    base_env = os.environ.copy()
+    base_env.setdefault("PYTHONUNBUFFERED", "1")
+    if env:
+        base_env.update(env)
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=base_env,
         )
         assert proc.stdout is not None
         while True:
@@ -192,6 +203,7 @@ async def stream_process(cmd: list[str]):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            env=base_env,
         ) as proc:
             assert proc.stdout is not None
             for line in proc.stdout:
@@ -257,10 +269,8 @@ def resolve_download_audio(_, __, url: str):
     tmp_path = Path(tmp.name)
 
     proc = subprocess.run(
-        [
-            "yt-dlp",
-            "--print-json",
-            "--newline",
+        YT_DLP_BASE_ARGS
+        + [
             "-x",
             "--audio-format",
             "mp3",
@@ -301,10 +311,8 @@ def resolve_download_video(_, __, url: str):
     tmp_path = Path(tmp.name)
 
     proc = subprocess.run(
-        [
-            "yt-dlp",
-            "--print-json",
-            "--newline",
+        YT_DLP_BASE_ARGS
+        + [
             "-f",
             "bestvideo+bestaudio",
             "--merge-output-format",
@@ -420,17 +428,17 @@ async def stream_download_audio(_, info, url: str):
     vid = extract_video_id(url)
     out_filename = f"{vid}.mp3"
     out_path = MEDIA_DIR / out_filename
-    cmd = [
-        "yt-dlp",
-        "--print-json",
-        "--newline",
-        "-x",
-        "--audio-format",
-        "mp3",
-        "-o",
-        str(out_path),
-        url,
-    ]
+    cmd = (
+        YT_DLP_BASE_ARGS
+        + [
+            "-x",
+            "--audio-format",
+            "mp3",
+            "-o",
+            str(out_path),
+            url,
+        ]
+    )
     seen_info = False
     async for line in stream_process(cmd):
         if not seen_info and line.strip().startswith("{"):
@@ -453,18 +461,18 @@ async def stream_download_video(_, info, url: str):
     vid = extract_video_id(url)
     out_filename = f"{vid}.mp4"
     out_path = MEDIA_DIR / out_filename
-    cmd = [
-        "yt-dlp",
-        "--print-json",
-        "--newline",
-        "-f",
-        "bestvideo+bestaudio",
-        "--merge-output-format",
-        "mp4",
-        "-o",
-        str(out_path),
-        url,
-    ]
+    cmd = (
+        YT_DLP_BASE_ARGS
+        + [
+            "-f",
+            "bestvideo+bestaudio",
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            str(out_path),
+            url,
+        ]
+    )
     seen_info = False
     async for line in stream_process(cmd):
         if not seen_info and line.strip().startswith("{"):
