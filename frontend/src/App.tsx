@@ -539,7 +539,6 @@ export default function App() {
                           onClick={() => startSeparation()}
                           disabled={inQueue}
                           className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
                         >
                           {inQueue ? "Separating..." : "Separate"}
                         </button>
