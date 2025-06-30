@@ -5,9 +5,9 @@ import urllib.parse
 from pathlib import Path
 import sys
 import shutil
-import secrets
 import os
-import platform
+import re
+import tempfile
 
 from ariadne import (
     make_executable_schema,
@@ -116,6 +116,29 @@ def read_metadata(vid: str):
     if not meta_path.exists():
         return {"title": vid, "thumbnail": None}
     return json.loads(meta_path.read_text())
+
+
+def sanitize_filename(title: str) -> str:
+    """Return a filesystem-friendly version of ``title`` without an extension."""
+    name = Path(title).stem
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    name = name.strip("._")
+    return name or "file"
+
+
+def unique_filename(title: str, ext: str) -> tuple[str, str]:
+    """Return a unique filename and stem based on ``title`` and ``ext``."""
+    base = sanitize_filename(title)
+    candidate = base
+    i = 1
+    while (
+        (MEDIA_DIR / f"{candidate}{ext}").exists()
+        or (MEDIA_DIR / f"{candidate}.json").exists()
+        or (MEDIA_DIR / candidate).exists()
+    ):
+        candidate = f"{base}_{i}"
+        i += 1
+    return f"{candidate}{ext}", candidate
 
 
 def open_folder(path: Path):
@@ -229,11 +252,10 @@ def resolve_downloads(_, __):
 
 @mutation.field("downloadAudio")
 def resolve_download_audio(_, __, url: str):
-    vid = extract_video_id(url)
-    out_filename = f"{vid}.mp3"
-    out_path = MEDIA_DIR / out_filename
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", dir=MEDIA_DIR)
+    tmp.close()
+    tmp_path = Path(tmp.name)
 
-    # combined metadata fetch & download
     proc = subprocess.run(
         [
             "yt-dlp",
@@ -243,24 +265,28 @@ def resolve_download_audio(_, __, url: str):
             "--audio-format",
             "mp3",
             "-o",
-            str(out_path),
+            str(tmp_path),
             url,
         ],
         capture_output=True,
         text=True,
     )
-    info_json = None
+
+    info: dict | None = None
     for line in proc.stdout.splitlines():
         if line.strip().startswith("{"):
-            info_json = line
+            try:
+                info = json.loads(line)
+            except json.JSONDecodeError:
+                pass
             break
-    if info_json:
-        try:
-            write_metadata(vid, json.loads(info_json))
-        except Exception:
-            write_metadata(vid, {"title": vid, "thumbnail": None})
-    else:
-        write_metadata(vid, {"title": vid, "thumbnail": None})
+
+    title = info.get("title") if info else extract_video_id(url)
+    out_filename, vid = unique_filename(title, ".mp3")
+    out_path = MEDIA_DIR / out_filename
+    if tmp_path.exists():
+        tmp_path.rename(out_path)
+    write_metadata(vid, info or {"title": title, "thumbnail": None})
     message = proc.stdout + proc.stderr
     success = proc.returncode == 0
     rel_url = build_media_url(out_filename) if success else None
@@ -270,11 +296,10 @@ def resolve_download_audio(_, __, url: str):
 
 @mutation.field("downloadVideo")
 def resolve_download_video(_, __, url: str):
-    vid = extract_video_id(url)
-    out_filename = f"{vid}.mp4"
-    out_path = MEDIA_DIR / out_filename
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4", dir=MEDIA_DIR)
+    tmp.close()
+    tmp_path = Path(tmp.name)
 
-    # combined metadata fetch & download
     proc = subprocess.run(
         [
             "yt-dlp",
@@ -285,24 +310,28 @@ def resolve_download_video(_, __, url: str):
             "--merge-output-format",
             "mp4",
             "-o",
-            str(out_path),
+            str(tmp_path),
             url,
         ],
         capture_output=True,
         text=True,
     )
-    info_json = None
+
+    info: dict | None = None
     for line in proc.stdout.splitlines():
         if line.strip().startswith("{"):
-            info_json = line
+            try:
+                info = json.loads(line)
+            except json.JSONDecodeError:
+                pass
             break
-    if info_json:
-        try:
-            write_metadata(vid, json.loads(info_json))
-        except Exception:
-            write_metadata(vid, {"title": vid, "thumbnail": None})
-    else:
-        write_metadata(vid, {"title": vid, "thumbnail": None})
+
+    title = info.get("title") if info else extract_video_id(url)
+    out_filename, vid = unique_filename(title, ".mp4")
+    out_path = MEDIA_DIR / out_filename
+    if tmp_path.exists():
+        tmp_path.rename(out_path)
+    write_metadata(vid, info or {"title": title, "thumbnail": None})
     message = proc.stdout + proc.stderr
     success = proc.returncode == 0
     rel_url = build_media_url(out_filename) if success else None
@@ -313,8 +342,7 @@ def resolve_download_video(_, __, url: str):
 @mutation.field("uploadAudio")
 def resolve_upload_audio(_, __, file, title: str | None = None):
     ext = Path(file.name).suffix or ".mp3"
-    vid = secrets.token_hex(8)
-    out_filename = f"{vid}{ext}"
+    out_filename, vid = unique_filename(title or file.name, ext)
     out_path = MEDIA_DIR / out_filename
     with open(out_path, "wb") as dst:
         for chunk in file.chunks():
