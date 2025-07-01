@@ -142,7 +142,7 @@ export default function App() {
   });
   const [stickyLogs, setStickyLogs] = useState(() => {
     const stored = localStorage.getItem("stickyLogs");
-    return stored ? JSON.parse(stored) : false;
+    return stored ? JSON.parse(stored) : true;
   });
   const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
   const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
