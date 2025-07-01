@@ -683,7 +683,7 @@ export default function App() {
           </div>
       </main>
       {logs.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-black text-yellow-400 text-xs border-t border-yellow-400">
+        <footer className="bg-black text-yellow-400 text-xs border-t border-yellow-400">
           <div className="flex justify-end">
             <div
               className="flex items-center gap-1 p-2 cursor-pointer select-none"
@@ -699,7 +699,7 @@ export default function App() {
               <div ref={logsEndRef} />
             </pre>
           )}
-        </div>
+        </footer>
       )}
     </>
   );
