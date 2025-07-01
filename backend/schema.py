@@ -149,6 +149,27 @@ def unique_filename(title: str, ext: str) -> tuple[str, str]:
     return f"{candidate}{ext}", candidate
 
 
+@mutation.field("deleteDownload")
+def resolve_delete_download(_, __, filename: str):
+    vid = Path(filename).stem
+    try:
+        file_path = MEDIA_DIR / filename
+        if file_path.exists():
+            if file_path.is_dir():
+                shutil.rmtree(file_path, ignore_errors=True)
+            else:
+                file_path.unlink()
+        dir_path = MEDIA_DIR / vid
+        if dir_path.exists():
+            shutil.rmtree(dir_path, ignore_errors=True)
+        meta_path = MEDIA_DIR / f"{vid}.json"
+        if meta_path.exists():
+            meta_path.unlink()
+        return True
+    except Exception:
+        return False
+
+
 def open_folder(path: Path):
     try:
         if sys.platform.startswith("win"):
