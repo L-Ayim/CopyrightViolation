@@ -140,6 +140,10 @@ export default function App() {
     const stored = localStorage.getItem("stickyHeader");
     return stored ? JSON.parse(stored) : true;
   });
+  const [stickyLogs, setStickyLogs] = useState(() => {
+    const stored = localStorage.getItem("stickyLogs");
+    return stored ? JSON.parse(stored) : false;
+  });
   const [loadingStems, setLoadingStems] = useState<Record<string, boolean>>({});
   const buffersRef = useRef<Record<string, Record<string, AudioBuffer>>>({});
   const MAX_LOG_LINES = 100;
@@ -161,6 +165,10 @@ export default function App() {
     localStorage.setItem("stickyHeader", JSON.stringify(stickyHeader));
   }, [stickyHeader]);
 
+  useEffect(() => {
+    localStorage.setItem("stickyLogs", JSON.stringify(stickyLogs));
+  }, [stickyLogs]);
+
   const lastTouchRef = useRef(0);
   const handleTouchStart = () => {
     const now = Date.now();
@@ -169,6 +177,17 @@ export default function App() {
       lastTouchRef.current = 0;
     } else {
       lastTouchRef.current = now;
+    }
+  };
+
+  const lastLogTouchRef = useRef(0);
+  const handleLogTouchStart = () => {
+    const now = Date.now();
+    if (now - lastLogTouchRef.current < 300) {
+      setStickyLogs((p: boolean) => !p);
+      lastLogTouchRef.current = 0;
+    } else {
+      lastLogTouchRef.current = now;
     }
   };
 
@@ -203,15 +222,6 @@ export default function App() {
         complete() {
           client
             .mutate({ mutation: DOWNLOAD_AUDIO, variables: { url } })
-            .then(({ data }) => {
-              const dl = data?.downloadAudio;
-              if (dl?.downloadUrl) {
-                const a = document.createElement("a");
-                a.href = dl.downloadUrl;
-                a.download = "";
-                a.click();
-              }
-            })
             .finally(() => {
               setDownloading(false);
               refetch();
@@ -240,15 +250,6 @@ export default function App() {
         complete() {
           client
             .mutate({ mutation: DOWNLOAD_VIDEO, variables: { url } })
-            .then(({ data }) => {
-              const dl = data?.downloadVideo;
-              if (dl?.downloadUrl) {
-                const a = document.createElement("a");
-                a.href = dl.downloadUrl;
-                a.download = "";
-                a.click();
-              }
-            })
             .finally(() => {
               setDownloading(false);
               refetch();
@@ -683,7 +684,11 @@ export default function App() {
           </div>
       </main>
       {logs.length > 0 && (
-        <footer className="bg-black text-yellow-400 text-xs border-t border-yellow-400">
+        <footer
+          onDoubleClick={() => setStickyLogs((p: boolean) => !p)}
+          onTouchStart={handleLogTouchStart}
+          className={`bg-black text-yellow-400 text-xs border-t border-yellow-400 ${stickyLogs ? "sticky bottom-0 z-10" : ""}`}
+        >
           <div className="flex justify-end">
             <div
               className="flex items-center gap-1 p-2 cursor-pointer select-none"
