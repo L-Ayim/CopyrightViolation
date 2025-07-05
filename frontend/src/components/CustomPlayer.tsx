@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+// src/components/CustomPlayer.tsx
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { FaPause, FaPlay, FaRedo } from "react-icons/fa";
 import { PitchShifter } from "soundtouchjs";
+import { toast } from "react-toastify";
 
-export interface Stem {
+// Exported as a type so TS erases it in the emitted JS
+export type Stem = {
   name: string;
   url: string;
-  path: string;
-}
+};
 
-
-export function CustomPlayer({
+export default function CustomPlayer({
   stems,
   selected,
   preloaded = {},
@@ -29,8 +30,6 @@ export function CustomPlayer({
   const [played, setPlayed] = useState(0);
   const [loop, setLoop] = useState(false);
 
-
-
   // Initialise AudioContext
   useEffect(() => {
     audioCtxRef.current = new AudioContext();
@@ -39,71 +38,82 @@ export function CustomPlayer({
     };
   }, []);
 
-  // Merge preloaded buffers on mount
+  // Merge any preloaded buffers
   useEffect(() => {
     if (Object.keys(preloaded).length) {
       buffersRef.current = { ...buffersRef.current, ...preloaded };
-      const maxDur = Math.max(
-        0,
-        ...Object.values(preloaded).map((b) => b.duration)
-      );
-      if (maxDur > 0) {
-        setDuration((d) => Math.max(d, maxDur));
-      }
+      const maxDur = Math.max(0, ...Object.values(preloaded).map((b) => b.duration));
+      if (maxDur > 0) setDuration((d) => Math.max(d, maxDur));
     }
   }, [preloaded]);
 
-  // Load buffers when a stem is first selected
+  // Fetch & decode stems on demand
   useEffect(() => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
+
     selected.forEach((name) => {
       if (!buffersRef.current[name]) {
         const stem = stems.find((s) => s.name === name);
         if (!stem) return;
+
         fetch(stem.url)
-          .then((r) => r.arrayBuffer())
+          .then((r) => {
+            if (!r.ok) throw new Error(`Network error ${r.status}`);
+            return r.arrayBuffer();
+          })
           .then((data) => ctx.decodeAudioData(data))
           .then((buffer) => {
             buffersRef.current[name] = buffer;
-            setDuration(Math.max(duration, buffer.duration));
+            setDuration((d) => Math.max(d, buffer.duration));
+            toast.success(`Loaded stem: ${name}`);
+          })
+          .catch((err) => {
+            console.error("Error loading stem", name, err);
+            toast.error(`Failed to load ${name}: ${err.message}`);
           });
       }
     });
-  }, [selected, stems, duration]);
+  }, [selected, stems]);
 
-  // Update gain when selection changes
+  // Update gains when selection changes
   useEffect(() => {
     Object.entries(sourcesRef.current).forEach(([name, { gain }]) => {
       gain.gain.value = selected.includes(name) ? 1 : 0;
     });
   }, [selected]);
 
-
+  // Play all loaded buffers
   const playAll = useCallback(
     (offset = pauseOffsetRef.current) => {
       const ctx = audioCtxRef.current;
       if (!ctx) return;
       const now = ctx.currentTime;
       startTimeRef.current = now - offset;
-      Object.entries(buffersRef.current).forEach(([name, buffer]) => {
-      const shifter = new PitchShifter(ctx, buffer, 1024);
-      shifter.pitchSemitones = 0;
-      shifter.tempo = 1;
-      const gain = ctx.createGain();
-      gain.gain.value = selected.includes(name) ? 1 : 0;
-      shifter.connect(gain);
-      gain.connect(ctx.destination);
-      shifter.percentagePlayed = offset / buffer.duration;
-      shifter.on("play", (d: unknown) => {
-        const data = d as { timePlayed: number };
-        setPlayed(data.timePlayed);
-      });
-      sourcesRef.current[name] = { shifter, gain };
-    });
-    setIsPlaying(true);
-  }, [selected]);
 
+      Object.entries(buffersRef.current).forEach(([name, buffer]) => {
+        const shifter = new PitchShifter(ctx, buffer, 1024);
+        shifter.pitchSemitones = 0;
+        shifter.tempo = 1;
+
+        const gain = ctx.createGain();
+        gain.gain.value = selected.includes(name) ? 1 : 0;
+
+        shifter.connect(gain);
+        gain.connect(ctx.destination);
+        shifter.percentagePlayed = offset / buffer.duration;
+        shifter.on("play", (d: any) => setPlayed(d.timePlayed));
+
+        sourcesRef.current[name] = { shifter, gain };
+      });
+
+      setIsPlaying(true);
+      toast.info("Playback started");
+    },
+    [selected]
+  );
+
+  // Pause all
   const pauseAll = useCallback(() => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
@@ -111,39 +121,37 @@ export function CustomPlayer({
     Object.values(sourcesRef.current).forEach(({ shifter }) => {
       try {
         shifter.disconnect();
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     });
     sourcesRef.current = {};
     setIsPlaying(false);
+    toast.info("Playback paused");
   }, [played, duration]);
 
-  const togglePlay = () => {
-    if (isPlaying) pauseAll();
-    else playAll();
-  };
+  const togglePlay = () => (isPlaying ? pauseAll() : playAll());
+  const toggleLoop = () => setLoop((p) => !p);
 
-  const toggleLoop = () => {
-    setLoop((p) => !p);
-  };
+  const seekTo = useCallback(
+    (t: number) => {
+      Object.values(sourcesRef.current).forEach(({ shifter }) => shifter.disconnect());
+      sourcesRef.current = {};
+      pauseOffsetRef.current = t;
+      playAll(t);
+      toast.info(`Seeked to ${Math.floor(t)}s`);
+    },
+    [playAll]
+  );
 
-  const seekTo = useCallback((t: number) => {
-    Object.values(sourcesRef.current).forEach(({ shifter }) => shifter.disconnect());
-    sourcesRef.current = {};
-    pauseOffsetRef.current = t;
-    playAll(t);
-  }, [playAll]);
-
+  // Handle end-of-track
   useEffect(() => {
     if (!isPlaying) return;
     if (played >= duration) {
-      if (loop) {
-        seekTo(0);
-      } else {
+      if (loop) seekTo(0);
+      else {
         pauseOffsetRef.current = duration;
         sourcesRef.current = {};
         setIsPlaying(false);
+        toast.info("Playback ended");
       }
     }
   }, [played, isPlaying, loop, duration, seekTo]);
@@ -153,14 +161,18 @@ export function CustomPlayer({
       <div className="flex space-x-2">
         <button
           onClick={togglePlay}
-          className={`flex-1 px-4 py-2 rounded font-bold flex items-center justify-center space-x-2 ${isPlaying ? 'bg-yellow-400 text-black' : 'bg-black text-yellow-400'}`}
+          className={`flex-1 px-4 py-2 rounded font-bold flex items-center justify-center space-x-2 ${
+            isPlaying ? "bg-yellow-400 text-black" : "bg-black text-yellow-400"
+          }`}
         >
           {isPlaying ? <FaPause /> : <FaPlay />}
           <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
         </button>
         <button
           onClick={toggleLoop}
-          className={`flex-1 px-4 py-2 rounded font-bold flex items-center justify-center ${loop ? 'bg-yellow-400 text-black' : 'bg-black text-yellow-400'}`}
+          className={`flex-1 px-4 py-2 rounded font-bold flex items-center justify-center ${
+            loop ? "bg-yellow-400 text-black" : "bg-black text-yellow-400"
+          }`}
           title="Toggle Repeat"
         >
           <FaRedo />
@@ -179,11 +191,9 @@ export function CustomPlayer({
       />
 
       <div className="text-sm text-center">
-        {new Date(played * 1000).toISOString().substr(14, 5)} /{' '}
+        {new Date(played * 1000).toISOString().substr(14, 5)} /{" "}
         {new Date(duration * 1000).toISOString().substr(14, 5)}
       </div>
-
-
     </div>
   );
 }

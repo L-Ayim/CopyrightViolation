@@ -1,3 +1,4 @@
+# start-copyright.ps1
 $ErrorActionPreference = 'Stop'
 $venvPath = Join-Path $PSScriptRoot 'venv'
 
@@ -14,11 +15,11 @@ $activate = Join-Path (Join-Path $venvPath 'Scripts') 'Activate.ps1'
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-# ---- Upgrade yt-dlp to latest version ----
+# Ensure latest yt-dlp
 Write-Host "Ensuring latest yt-dlp is installed..."
 python -m pip install --upgrade yt-dlp
 
-# ---- GPU Detection and Torch Variant Management ----
+# GPU detection & Torch variant management (unchanged)...
 $gpu = $false
 $forceCuda = $env:FORCE_CUDA
 $forceCpu  = $env:FORCE_CPU
@@ -26,14 +27,10 @@ if ($forceCuda) {
     $gpu = $true
 } elseif (-not $forceCpu) {
     if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
-        try {
-            nvidia-smi > $null
-            if ($LASTEXITCODE -eq 0) { $gpu = $true }
-        } catch {}
+        try { nvidia-smi > $null; if ($LASTEXITCODE -eq 0) { $gpu = $true } } catch {}
     }
 }
 
-# Check current torch build
 $torchCuda = $false
 try {
     & python -c "import torch,sys; sys.exit(0 if torch.version.cuda else 1)" 2>$null
@@ -63,9 +60,9 @@ if (!(Test-Path (Join-Path (Join-Path $PSScriptRoot 'frontend') 'node_modules'))
     Pop-Location
 }
 
-# ---- Start backend and frontend ----
-$backend = Start-Process -FilePath python `
-    -ArgumentList 'manage.py','runserver','0.0.0.0:8000' `
+# ---- Start backend with Uvicorn and frontend with Vite ----
+$backend = Start-Process -FilePath uvicorn `
+    -ArgumentList "backend.asgi:application","--host","0.0.0.0","--port","8000","--reload" `
     -PassThru
 
 $npmExe = Join-Path $PSScriptRoot 'frontend\node_modules\.bin\npm.cmd'
@@ -84,19 +81,7 @@ try {
         $_.IPAddress -ne '127.0.0.1' -and $_.IPAddress -notlike '169.254.*'
     } | Select-Object -First 1 -ExpandProperty IPAddress
 } catch {
-    $ipAddr = ([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
-        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
-        Select-Object -First 1).IPAddressToString
-}
-
-if (-not $ipAddr) {
-    try {
-        $ipAddr = ([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
-            Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
-            Select-Object -First 1).IPAddressToString
-    } catch {
-        $ipAddr = 'localhost'
-    }
+    $ipAddr = 'localhost'
 }
 
 Write-Host "Backend available on http://${ipAddr}:8000" -ForegroundColor Green
