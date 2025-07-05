@@ -16,6 +16,9 @@ from ariadne import (
     gql,
     upload_scalar,
 )
+from asyncio import Queue
+# simple in-memory pubsub for “downloadsUpdated”
+pubsub: Queue[dict] = Queue()
 import torch
 from django.conf import settings
 
@@ -25,7 +28,7 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Optional delay between yt-dlp requests to avoid YouTube rate limits
 YT_DLP_SLEEP = float(os.getenv("YT_DLP_SLEEP", "0"))
-YT_DLP_BASE_ARGS = ["yt-dlp", "--print-json", "--newline"]
+YT_DLP_BASE_ARGS = ["yt-dlp", "--print-json", "--newline", "--no-warnings"]
 if YT_DLP_SLEEP > 0:
     YT_DLP_BASE_ARGS += ["--sleep-requests", str(YT_DLP_SLEEP)]
 
@@ -47,6 +50,11 @@ type_defs = gql(
     thumbnail: String
     stems: [Stem!]!
   }
+
+  type DownloadMetadata {
+    title: String!
+    thumbnail: String
+    }
 
   type Stem {
     name: String!
@@ -75,6 +83,8 @@ type_defs = gql(
     deleteDownload(filename: String!): Boolean!
     openStemsFolder(filename: String!): Boolean!
   }
+  
+
   type Subscription {
     downloadAudioProgress(url: String!): String!
     downloadVideoProgress(url: String!): String!
@@ -83,6 +93,11 @@ type_defs = gql(
       model: String!,
       stems: [String!]!
     ): String!
+    # Fires whenever any audio/video download completes
+    downloadsUpdated: DownloadedFile!
+    # New metadata-only streams for title & thumbnail
+    downloadAudioMetadata(url: String!): DownloadMetadata!
+    downloadVideoMetadata(url: String!): DownloadMetadata!
   }
 """
 )
@@ -196,12 +211,7 @@ def resolve_open_stems_folder(_, __, filename: str):
 
 
 async def stream_process(cmd: list[str], env: dict | None = None):
-    """Yield output lines from a subprocess as they are produced.
-
-    On platforms where ``asyncio`` cannot create subprocess transports (e.g.
-    some Windows event loops), fall back to a synchronous ``subprocess``
-    running in the current thread and yield its output asynchronously.
-    """
+    """Yield output lines from a subprocess as they are produced."""
     base_env = os.environ.copy()
     base_env.setdefault("PYTHONUNBUFFERED", "1")
     if env:
@@ -239,7 +249,7 @@ async def stream_process(cmd: list[str], env: dict | None = None):
 def resolve_downloads(_, __):
     items = []
     files = [f for f in MEDIA_DIR.iterdir() if f.is_file()]
-    files.sort(key=lambda p: p.stat().st_mtime)
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     audio_exts = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
     for f in files:
         ext = f.suffix.lower()
@@ -251,7 +261,7 @@ def resolve_downloads(_, __):
             continue
 
         vid = f.stem
-        meta = read_metadata(vid)
+        meta = read_metadata(vid)                # ← reads title & thumbnail
         rel_url = build_media_url(f.name)
 
         stems_list = []
@@ -259,30 +269,22 @@ def resolve_downloads(_, __):
             stems_dir = MEDIA_DIR / vid / "stems"
             if stems_dir.exists():
                 for stem_file in sorted(stems_dir.rglob("*.mp3")):
-                    stems_list.append(
-                        {
-                            "name": stem_file.stem,
-                            "url": build_media_url(
-                                f"{vid}/stems/"
-                                f"{stem_file.relative_to(stems_dir)}"
-                            ),
-                            "path": str(stem_file.resolve()),
-                        }
-                    )
+                    stems_list.append({
+                        "name": stem_file.stem,
+                        "url": build_media_url(f"{vid}/stems/{stem_file.relative_to(stems_dir)}"),
+                        "path": str(stem_file.resolve()),
+                    })
 
-        items.append(
-            {
-                "filename": f.name,
-                "url": rel_url,
-                "type": typ,
-                "title": meta["title"],
-                "thumbnail": meta.get("thumbnail"),
-                "stems": stems_list,
-            }
-        )
+        items.append({
+            "filename":  f.name,
+            "url":       rel_url,
+            "type":      typ,
+            "title":     meta["title"],      # ← uses metadata
+            "thumbnail": meta.get("thumbnail"),
+            "stems":     stems_list,
+        })
+
     return items
-
-
 
 
 @mutation.field("downloadAudio")
@@ -292,12 +294,46 @@ def resolve_download_audio(_, __, url: str):
     if not base:
         return {"success": False, "message": "No download", "downloadUrl": None}
 
-    out_filename = f"{base}.mp3"
-    out_path = MEDIA_DIR / out_filename
-    if not out_path.exists():
-        return {"success": False, "message": "File missing", "downloadUrl": None}
+    # Paths
+    tmp_path       = MEDIA_DIR / f"{vid}.tmp.mp3"
+    # read metadata JSON you wrote in downloadAudioMetadata subscription
+    meta           = read_metadata(vid)
+    sanitized_base = sanitize_filename(meta["title"])
+    # ensure unique:
+    final_filename, final_base = unique_filename(meta["title"], ".mp3")
+    final_path     = MEDIA_DIR / final_filename
 
-    rel_url = build_media_url(out_filename)
+    # Rename tmp → final (or if YouTube already dropped it as base.mp3, rename that)
+    if tmp_path.exists():
+        tmp_path.rename(final_path)
+    else:
+        existing = MEDIA_DIR / f"{base}.mp3"
+        if not existing.exists():
+            return {"success": False, "message": "File missing", "downloadUrl": None}
+        existing.rename(final_path)
+
+    # Move & rewrite JSON metadata to match
+    old_meta = MEDIA_DIR / f"{vid}.json"
+    if old_meta.exists():
+        new_meta = MEDIA_DIR / f"{final_base}.json"
+        old_meta.rename(new_meta)
+    write_metadata(final_base, {
+        "title":     meta["title"],
+        "thumbnail": meta.get("thumbnail")
+    })
+
+    rel_url = build_media_url(final_filename)
+
+    # Notify subscribers
+    asyncio.create_task(pubsub.put({
+        "filename":  final_filename,
+        "url":       rel_url,
+        "type":      "audio",
+        "title":     meta["title"],
+        "thumbnail": meta.get("thumbnail"),
+        "stems":     [],
+    }))
+
     return {"success": True, "message": "", "downloadUrl": rel_url}
 
 
@@ -308,12 +344,44 @@ def resolve_download_video(_, __, url: str):
     if not base:
         return {"success": False, "message": "No download", "downloadUrl": None}
 
-    out_filename = f"{base}.mp4"
-    out_path = MEDIA_DIR / out_filename
-    if not out_path.exists():
-        return {"success": False, "message": "File missing", "downloadUrl": None}
+    # Paths
+    tmp_path       = MEDIA_DIR / f"{vid}.tmp.mp4"
+    meta           = read_metadata(vid)
+    sanitized_base = sanitize_filename(meta["title"])
+    final_filename, final_base = unique_filename(meta["title"], ".mp4")
+    final_path     = MEDIA_DIR / final_filename
 
-    rel_url = build_media_url(out_filename)
+    # Rename tmp → final (or existing .mp4 → final)
+    if tmp_path.exists():
+        tmp_path.rename(final_path)
+    else:
+        existing = MEDIA_DIR / f"{base}.mp4"
+        if not existing.exists():
+            return {"success": False, "message": "File missing", "downloadUrl": None}
+        existing.rename(final_path)
+
+    # Move & rewrite JSON metadata
+    old_meta = MEDIA_DIR / f"{vid}.json"
+    if old_meta.exists():
+        new_meta = MEDIA_DIR / f"{final_base}.json"
+        old_meta.rename(new_meta)
+    write_metadata(final_base, {
+        "title":     meta["title"],
+        "thumbnail": meta.get("thumbnail")
+    })
+
+    rel_url = build_media_url(final_filename)
+
+    # Notify subscribers
+    asyncio.create_task(pubsub.put({
+        "filename":  final_filename,
+        "url":       rel_url,
+        "type":      "video",
+        "title":     meta["title"],
+        "thumbnail": meta.get("thumbnail"),
+        "stems":     [],
+    }))
+
     return {"success": True, "message": "", "downloadUrl": rel_url}
 
 
@@ -339,127 +407,148 @@ def resolve_separate_stems(_, __, filename: str, model: str, stems: list[str]):
 
     cuda_available = torch.cuda.is_available()
     device = "cuda" if cuda_available else "cpu"
+    reason = ""
     if not cuda_available:
-        if torch.version.cuda is None:
-            reason = "PyTorch was installed without CUDA support."
-        else:
-            reason = "CUDA runtime not available."
-    else:
-        reason = ""
-    device_flag = f"--device={device}"
+        reason = "CUDA runtime not available."
+
     cmd = [
-        sys.executable,
-        "-m",
-        "demucs.separate",
-        "-n",
-        model,
-        "--out",
-        str(out_dir),
-        "--filename",
-        "{stem}.{ext}",
-        "--mp3",
-        device_flag,
+        sys.executable, "-m", "demucs.separate",
+        "-n", model, "--out", str(out_dir),
+        "--filename", "{stem}.{ext}", "--mp3",
+        f"--device={device}",
     ]
-    if stems:
-        stems_lower = [s.lower() for s in stems]
-        unique = set(stems_lower)
-        if unique == {"vocals", "accompaniment"}:
-            cmd += ["--two-stems", "vocals"]
-        elif len(unique) == 1:
-            cmd += ["--stem", next(iter(unique))]
+    stems_lower = [s.lower() for s in stems]
+    unique = set(stems_lower)
+    if unique == {"vocals", "accompaniment"}:
+        cmd += ["--two-stems", "vocals"]
+    elif len(unique) == 1:
+        cmd += ["--stem", next(iter(unique))]
     cmd.append(str(src_path))
+
     proc = subprocess.run(cmd, capture_output=True, text=True)
-    extra = f"\n{reason}" if reason else ""
-    logs = f"Using device: {device}{extra}\n" + proc.stdout + proc.stderr
+    logs = f"Using device: {device}\n{reason}\n" + proc.stdout + proc.stderr
     success = proc.returncode == 0
     return {"success": success, "logs": logs}
 
+# ── metadata subscriptions ────────────────────────────────────────────────────
+@subscription.source("downloadAudioMetadata")
+async def stream_download_audio_metadata(_, info, url: str):
+    vid = extract_video_id(url)
+    cmd = [*YT_DLP_BASE_ARGS, "--dump-json", url]
+    async for line in stream_process(cmd):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            meta = json.loads(line)
+            write_metadata(vid, {
+                "title":     meta.get("title", vid),
+                "thumbnail": meta.get("thumbnail"),
+            })
+            yield meta
+            return
+        except json.JSONDecodeError:
+            continue
+
+@subscription.field("downloadAudioMetadata")
+def resolve_download_audio_metadata(meta, info, url: str):
+    return {
+        "title":     meta.get("title", ""),
+        "thumbnail": meta.get("thumbnail")
+    }
+
+@subscription.source("downloadVideoMetadata")
+async def stream_download_video_metadata(_, info, url: str):
+    vid = extract_video_id(url)
+    cmd = [*YT_DLP_BASE_ARGS, "--dump-json", url]
+    async for line in stream_process(cmd):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            meta = json.loads(line)
+            write_metadata(vid, {
+                "title":     meta.get("title", vid),
+                "thumbnail": meta.get("thumbnail"),
+            })
+            yield meta
+            return
+        except json.JSONDecodeError:
+            continue
+
+@subscription.field("downloadVideoMetadata")
+def resolve_download_video_metadata(meta, info, url: str):
+    return {
+        "title":     meta.get("title", ""),
+        "thumbnail": meta.get("thumbnail")
+    }
+
+# ── downloadsUpdated subscription ─────────────────────────────────────────────
+@subscription.source("downloadsUpdated")
+async def downloads_updated_generator(_, info):
+    while True:
+        file = await pubsub.get()
+        yield file
+
+@subscription.field("downloadsUpdated")
+def downloads_updated_resolver(raw_file, info):
+    stem = Path(raw_file["filename"]).stem
+    meta = read_metadata(stem)
+    return {
+        "filename":  raw_file["filename"],
+        "url":       raw_file["url"],
+        "type":      raw_file["type"],
+        "title":     meta["title"],
+        "thumbnail": meta.get("thumbnail"),
+        "stems":     raw_file.get("stems", []),
+    }
 
 @subscription.source("downloadAudioProgress")
 async def stream_download_audio(_, info, url: str):
-    vid = extract_video_id(url)
-    tmp_path = MEDIA_DIR / f"{vid}.tmp.mp3"
-    for p in [MEDIA_DIR / f"{vid}.mp3", tmp_path]:
-        if p.exists():
-            p.unlink()
+    vid      = extract_video_id(url)
+    # decide on the sanitized base name up front
+    _, base  = unique_filename(vid, ".mp3")
+    DOWNLOAD_MAP[vid] = base      # ← stash the base so resolve_download_audio can find it
 
-    cmd = (
-        YT_DLP_BASE_ARGS
-        + [
-            "-x",
-            "--audio-format",
-            "mp3",
-            "-o",
-            str(tmp_path),
-            url,
-        ]
-    )
-    seen_info = False
-    info_data: dict | None = None
+    out_path = MEDIA_DIR / f"{base}.mp3"
+    # remove any stale output
+    if out_path.exists():
+        out_path.unlink()
+
+    # write directly to the final file
+    cmd = [
+        "yt-dlp",
+        "--newline",
+        "-x", "--audio-format", "mp3",
+        "-o", str(out_path),
+        url,
+    ]
     async for line in stream_process(cmd):
-        if not seen_info and line.strip().startswith("{"):
-            try:
-                info_data = json.loads(line)
-                seen_info = True
-            except json.JSONDecodeError:
-                pass
-            continue
         yield line
-
-    title = info_data.get("title") if info_data else vid
-    out_filename, base = unique_filename(title, ".mp3")
-    out_path = MEDIA_DIR / out_filename
-    if tmp_path.exists():
-        tmp_path.rename(out_path)
-    write_metadata(base, info_data or {"title": title, "thumbnail": None})
-    DOWNLOAD_MAP[vid] = base
-
 
 @subscription.field("downloadAudioProgress")
 def resolve_download_audio_progress(line, info, url: str):
     return line
 
-
 @subscription.source("downloadVideoProgress")
 async def stream_download_video(_, info, url: str):
-    vid = extract_video_id(url)
-    tmp_path = MEDIA_DIR / f"{vid}.tmp.mp4"
-    for p in [MEDIA_DIR / f"{vid}.mp4", tmp_path]:
-        if p.exists():
-            p.unlink()
+    vid      = extract_video_id(url)
+    _, base  = unique_filename(vid, ".mp4")
+    out_path = MEDIA_DIR / f"{base}.mp4"
 
-    cmd = (
-        YT_DLP_BASE_ARGS
-        + [
-            "-f",
-            "bestvideo+bestaudio",
-            "--merge-output-format",
-            "mp4",
-            "-o",
-            str(tmp_path),
-            url,
-        ]
-    )
-    seen_info = False
-    info_data: dict | None = None
+    if out_path.exists():
+        out_path.unlink()
+
+    cmd = [
+        "yt-dlp",
+        "--newline",
+        "-f", "bestvideo+bestaudio",
+        "--merge-output-format", "mp4",
+        "-o", str(out_path),
+        url,
+    ]
     async for line in stream_process(cmd):
-        if not seen_info and line.strip().startswith("{"):
-            try:
-                info_data = json.loads(line)
-                seen_info = True
-            except json.JSONDecodeError:
-                pass
-            continue
         yield line
-
-    title = info_data.get("title") if info_data else vid
-    out_filename, base = unique_filename(title, ".mp4")
-    out_path = MEDIA_DIR / out_filename
-    if tmp_path.exists():
-        tmp_path.rename(out_path)
-    write_metadata(base, info_data or {"title": title, "thumbnail": None})
-    DOWNLOAD_MAP[vid] = base
-
 
 @subscription.field("downloadVideoProgress")
 def resolve_download_video_progress(line, info, url: str):
@@ -477,41 +566,25 @@ async def stream_separate_stems(
 
     cuda_available = torch.cuda.is_available()
     device = "cuda" if cuda_available else "cpu"
+    reason = ""
     if not cuda_available:
-        if torch.version.cuda is None:
-            reason = "PyTorch was installed without CUDA support."
-        else:
-            reason = "CUDA runtime not available."
-    else:
-        reason = ""
-    device_flag = f"--device={device}"
-
-    intro = f"Using device: {device}\n"
-    if reason:
-        intro += reason + "\n"
-    yield intro
+        reason = "CUDA runtime not available."
+    yield f"Using device: {device}\n{reason}\n"
 
     cmd = [
-        sys.executable,
-        "-m",
-        "demucs.separate",
-        "-n",
-        model,
-        "--out",
-        str(out_dir),
-        "--filename",
-        "{stem}.{ext}",
-        "--mp3",
-        device_flag,
+        sys.executable, "-m", "demucs.separate",
+        "-n", model, "--out", str(out_dir),
+        "--filename", "{stem}.{ext}", "--mp3",
+        f"--device={device}",
     ]
-    if stems:
-        stems_lower = [s.lower() for s in stems]
-        unique = set(stems_lower)
-        if unique == {"vocals", "accompaniment"}:
-            cmd += ["--two-stems", "vocals"]
-        elif len(unique) == 1:
-            cmd += ["--stem", next(iter(unique))]
+    stems_lower = [s.lower() for s in stems]
+    unique = set(stems_lower)
+    if unique == {"vocals", "accompaniment"}:
+        cmd += ["--two-stems", "vocals"]
+    elif len(unique) == 1:
+        cmd += ["--stem", next(iter(unique))]
     cmd.append(str(src_path))
+
     async for line in stream_process(cmd):
         yield line
 
@@ -525,4 +598,4 @@ def resolve_separate_stems_progress(
 
 schema = make_executable_schema(
     type_defs, query, mutation, subscription, upload_scalar
-)
+)  

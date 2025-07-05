@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CustomPlayer, type Stem } from "./CustomPlayer";
-import { gql, useQuery, useApolloClient } from "@apollo/client";
+import { gql, useQuery, useSubscription, useApolloClient } from "@apollo/client";
 import {
   FaChevronDown,
   FaGuitar,
@@ -9,10 +9,30 @@ import {
 } from "react-icons/fa";
 import { GiDrumKit, GiGuitarBassHead, GiPianoKeys } from "react-icons/gi";
 import type { IconType } from "react-icons";
+import { get, set } from 'idb-keyval'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // --- GraphQL ---
+const DOWNLOAD_AUDIO_METADATA = gql`
+  subscription DownloadAudioMetadata($url: String!) {
+    downloadAudioMetadata(url: $url) {
+      title
+      thumbnail
+    }
+  }
+`;
+
+const DOWNLOAD_VIDEO_METADATA = gql`
+  subscription DownloadVideoMetadata($url: String!) {
+    downloadVideoMetadata(url: $url) {
+      title
+      thumbnail
+    }
+  }
+`;
+
+
 const GET_DOWNLOADS = gql`
   query {
     downloads {
@@ -29,7 +49,6 @@ const GET_DOWNLOADS = gql`
     }
   }
 `;
-
 
 const DOWNLOAD_AUDIO = gql`
   mutation DownloadAudio($url: String!) {
@@ -114,6 +133,19 @@ function extractVideoId(url: string): string | null {
   }
 }
 
+const DOWNLOADS_UPDATED = gql`
+  subscription {
+    downloadsUpdated {
+      filename
+      url
+      type
+      title
+      thumbnail
+      stems { name url path }
+    }
+  }
+`;
+
 
 
 export default function App() {
@@ -122,13 +154,45 @@ export default function App() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const { data: dlData, refetch } = useQuery(GET_DOWNLOADS, {
-    fetchPolicy: "network-only",
-    pollInterval: 2000,
+const { data: dlData, refetch } = useQuery(GET_DOWNLOADS);
+
+  // --- subscribe to "downloadsUpdated" and refetch on each event ---
+  useSubscription(DOWNLOADS_UPDATED, {
+    onSubscriptionData: ({ subscriptionData }) => {
+      refetch();
+    },
   });
 
   const client = useApolloClient();
   const [downloading, setDownloading] = useState(false);
+
+  // new state slots for the incoming meta
+const [audioMeta, setAudioMeta] = useState<{ title: string; thumbnail: string | null } | null>(null);
+const [videoMeta, setVideoMeta] = useState<{ title: string; thumbnail: string | null } | null>(null);
+
+// subscribe to metadata-only streams
+const { data: amData } = useSubscription(DOWNLOAD_AUDIO_METADATA, { variables: { url } });
+const { data: vmData } = useSubscription(DOWNLOAD_VIDEO_METADATA, { variables: { url } });
+
+// when they arrive, stash them
+useEffect(() => {
+  if (amData?.downloadAudioMetadata) {
+    setAudioMeta(amData.downloadAudioMetadata);
+  }
+}, [amData]);
+
+useEffect(() => {
+  if (vmData?.downloadVideoMetadata) {
+    setVideoMeta(vmData.downloadVideoMetadata);
+  }
+}, [vmData]);
+
+// clear out any old meta whenever the URL changes
+useEffect(() => {
+  setAudioMeta(null);
+  setVideoMeta(null);
+}, [url]);
+
 
   const [queue, setQueue] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, Record<string, boolean>>>({});
@@ -202,61 +266,87 @@ export default function App() {
       });
   };
 
-  const startDownloadAudio = () => {
-    if (!videoId) return;
-    setDownloading(true);
-    setLogs([]);
-    client
-      .subscribe({
-        query: DOWNLOAD_AUDIO_PROGRESS,
-        variables: { url },
-      })
-      .subscribe({
-        next(res) {
-          const line = res.data?.downloadAudioProgress;
-          if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
-        },
-        error() {
-          setDownloading(false);
-        },
-        complete() {
-          client
-            .mutate({ mutation: DOWNLOAD_AUDIO, variables: { url } })
-            .finally(() => {
-              setDownloading(false);
-              refetch();
-            });
-        },
-      });
-  };
+const startDownloadAudio = async () => {
+  if (!videoId) return;
 
-  const startDownloadVideo = () => {
-    if (!videoId) return;
-    setDownloading(true);
-    setLogs([]);
-    client
-      .subscribe({
-        query: DOWNLOAD_VIDEO_PROGRESS,
-        variables: { url },
-      })
-      .subscribe({
-        next(res) {
-          const line = res.data?.downloadVideoProgress;
-          if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
-        },
-        error() {
+  setDownloading(true);
+  setLogs([]);
+
+  // subscribe to the progress stream
+  const sub = client
+    .subscribe({
+      query: DOWNLOAD_AUDIO_PROGRESS,
+      variables: { url },
+    })
+    .subscribe({
+      next({ data }) {
+        const line = data?.downloadAudioProgress;
+        if (line) {
+          setLogs(p => [...p.slice(-MAX_LOG_LINES + 1), line]);
+        }
+      },
+      error() {
+        setDownloading(false);
+      },
+      async complete() {
+        try {
+          // kick off the actual download mutation
+          await client.mutate({
+            mutation: DOWNLOAD_AUDIO,
+            variables: { url },
+          });
+          // and then refetch your downloads list
+          await refetch();
+        } catch (e) {
+          console.error("downloadAudio failed", e);
+        } finally {
           setDownloading(false);
-        },
-        complete() {
-          client
-            .mutate({ mutation: DOWNLOAD_VIDEO, variables: { url } })
-            .finally(() => {
-              setDownloading(false);
-              refetch();
-            });
-        },
-      });
-  };
+        }
+      },
+    });
+
+  // if you ever need to cancel:
+  return () => sub.unsubscribe();
+};
+
+const startDownloadVideo = async () => {
+  if (!videoId) return;
+
+  setDownloading(true);
+  setLogs([]);
+
+  const sub = client
+    .subscribe({
+      query: DOWNLOAD_VIDEO_PROGRESS,
+      variables: { url },
+    })
+    .subscribe({
+      next({ data }) {
+        const line = data?.downloadVideoProgress;
+        if (line) {
+          setLogs(p => [...p.slice(-MAX_LOG_LINES + 1), line]);
+        }
+      },
+      error() {
+        setDownloading(false);
+      },
+      async complete() {
+        try {
+          await client.mutate({
+            mutation: DOWNLOAD_VIDEO,
+            variables: { url },
+          });
+          await refetch();
+        } catch (e) {
+          console.error("downloadVideo failed", e);
+        } finally {
+          setDownloading(false);
+        }
+      },
+    });
+
+  return () => sub.unsubscribe();
+};
 
   const startUploadAudio = () => {
     if (uploadFiles.length === 0) return;
@@ -309,27 +399,372 @@ export default function App() {
     buffersRef.current[file] = buffers;
     setLoadingStems((p: Record<string, boolean>) => ({ ...p, [file]: false }));
   };
+    const [stemsDirHandle, setStemsDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+
+useEffect(() => {
+  ;(async () => {
+    const handle = await get<FileSystemDirectoryHandle>('stems-dir')
+    if (!handle) return
+    // re-request read/write permission
+    const perm = await handle.requestPermission({ mode: 'readwrite' })
+    if (perm === 'granted') {
+      setStemsDirHandle(handle)
+    } else {
+      // they revoked it, clear it out
+      await set('stems-dir', null)
+    }
+  })()
+}, [])
+
+// re-ask browser for read/write access whenever we load the handle,
+// so that subfolder writes don’t trigger another permission prompt
+useEffect(() => {
+  if (!stemsDirHandle) return;
+
+  stemsDirHandle.requestPermission({ mode: 'readwrite' }).then(status => {
+    if (status !== 'granted') {
+      // user revoked or never granted — clear it so they can re-pick
+      setStemsDirHandle(null);
+    }
+  });
+}, [stemsDirHandle]);
+
+
+const chooseStemsFolder = async () => {
+  // requires Chrome/Edge on HTTPS or localhost
+  // @ts-ignore
+  const handle = await window.showDirectoryPicker()
+  setStemsDirHandle(handle)
+  await set('stems-dir', handle)   // ← persist the handle
+}
+
+async function writeAllToSubfolder(
+  stemsDirHandle: FileSystemDirectoryHandle,
+  filename: string,
+  originalUrl: string,
+  stems: Stem[]
+) {
+  // strip extension and any trailing _n index
+  const raw = filename.replace(/\.[^/.]+$/, "").replace(/_\d+$/, "");
+  // 1) make/open subdir
+  const folder = await stemsDirHandle.getDirectoryHandle(raw, { create: true });
+
+  // 2) write original file
+  const origBlob = await fetch(originalUrl).then((r) => r.blob());
+  const origHandle = await folder.getFileHandle(`${raw}.mp3`, { create: true });
+  const origWriter = await origHandle.createWritable();
+  await origWriter.write(origBlob);
+  await origWriter.close();
+
+  // 3) write stems
+  await Promise.all(
+    stems.map(async (s) => {
+      const blob = await fetch(s.url).then((r) => r.blob());
+      const stemHandle = await folder.getFileHandle(`${raw}-${s.name}.mp3`, {
+        create: true,
+      });
+      const stemWriter = await stemHandle.createWritable();
+      await stemWriter.write(blob);
+      await stemWriter.close();
+    })
+  );
+}
+
+function slugify(str: string) {
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+interface DownloadItemCardProps {
+  f: {
+    filename: string;
+    url: string;
+    type: "audio" | "video";
+    title: string;
+    thumbnail?: string;
+    stems?: Stem[];
+  };
+  stemsDirHandle: FileSystemDirectoryHandle | null;
+}
+
+const DownloadItemCard: React.FC<DownloadItemCardProps> = ({ f, stemsDirHandle }) => {
+  const client = useApolloClient();
+  const [meta, setMeta] = useState<{ title: string; thumbnail: string | null } | null>(null);
+  const [inQueue, setInQueue] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [justSeparated, setJustSeparated] = useState(false);
+  const MAX_LOG_LINES = 100;
+
+  // load JSON metadata if present
+  useEffect(() => {
+    const raw = f.filename.replace(/\.[^/.]+$/, "").replace(/_\d+$/, "");
+    fetch(`/media/${raw}.json`)
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(setMeta)
+      .catch(() => {});
+  }, [f.filename]);
+
+  const displayTitle = meta?.title ?? f.title;
+  const thumbnail    = meta?.thumbnail ?? f.thumbnail ?? null;
+  const folderName   = slugify(displayTitle);
+
+  // which stems are selected
+  const stems = f.stems ?? [];
+  const [selectedStems, setSelectedStems] = useState<string[]>([]);
+  useEffect(() => {
+    setSelectedStems(stems.map(s => s.name));
+  }, [stems]);
+
+  const toggleStem = (name: string) => {
+    setSelectedStems(sel =>
+      sel.includes(name) ? sel.filter(n => n !== name) : [...sel, name]
+    );
+  };
+
+  const availableCount = stems.length;
+
+  const startSeparation = () => {
+    const missing    = AVAILABLE_STEMS.filter(n => !stems.some(s => s.name === n));
+    const toSeparate = missing.length ? missing : AVAILABLE_STEMS;
+    setInQueue(true);
+    setLogs([]);
+
+    client.subscribe({
+      query: SEPARATE_STEMS_PROGRESS,
+      variables: { filename: f.filename, model: "htdemucs_6s", stems: toSeparate },
+    }).subscribe({
+      next({ data }) {
+        if (data?.separateStemsProgress) {
+          setLogs(l => [...l.slice(-MAX_LOG_LINES + 1), data.separateStemsProgress]);
+        }
+      },
+      error() {
+        setInQueue(false);
+      },
+      complete() {
+        setInQueue(false);
+        setExpanded(true);
+        setJustSeparated(true);
+        client.refetchQueries({ include: [GET_DOWNLOADS] });
+      },
+    });
+  };
+
+  async function writeAllToSubfolder(
+    dir: FileSystemDirectoryHandle,
+    filename: string,
+    originalUrl: string,
+    stems: Stem[]
+  ) {
+    const raw    = filename.replace(/\.[^/.]+$/, "").replace(/_\d+$/, "");
+    const folder = await dir.getDirectoryHandle(raw, { create: true });
+
+    // helper: only write if file doesn't already exist
+    async function writeIfMissing(name: string, blob: Blob) {
+      try {
+        await folder.getFileHandle(name, { create: false });
+      } catch {
+        const handle = await folder.getFileHandle(name, { create: true });
+        const w = await handle.createWritable();
+        await w.write(blob);
+        await w.close();
+      }
+    }
+
+    // original track
+    const origBlob = await fetch(originalUrl).then(r => r.blob());
+    await writeIfMissing(`${raw}.mp3`, origBlob);
+
+    // each stem
+    await Promise.all(
+      stems.map(async s => {
+        const blob = await fetch(s.url).then(r => r.blob());
+        await writeIfMissing(`${raw}-${s.name}.mp3`, blob);
+      })
+    );
+  }
+
+  // auto-save stems once separation finishes
+  useEffect(() => {
+    if (justSeparated && stems.length > 0 && stemsDirHandle) {
+      writeAllToSubfolder(stemsDirHandle, f.filename, f.url, stems)
+        .catch(console.error)
+        .finally(() => setJustSeparated(false));
+    }
+  }, [justSeparated, stems, stemsDirHandle, f.filename, f.url]);
+
+  // on-mount sync for any existing stems
+  useEffect(() => {
+    if (stems.length > 0 && stemsDirHandle) {
+      writeAllToSubfolder(stemsDirHandle, f.filename, f.url, stems)
+        .catch(console.error);
+    }
+  }, [stemsDirHandle, stems, f.filename, f.url]);
+
+  // Video fallback
+  if (f.type !== "audio") {
+    return (
+      <div className="bg-yellow-400 border border-black rounded-lg flex items-center p-2">
+        {thumbnail && <img src={thumbnail} className="w-20 h-20 object-contain mr-4" />}
+        <span className="flex-1 text-black font-semibold truncate">
+          {displayTitle} (Video)
+        </span>
+        <a
+          href={f.url}
+          download={`${folderName}.mp3`}
+          className="bg-black text-yellow-400 px-2 py-1 rounded hover:bg-gray-800 hover:text-yellow-300 transition-colors"
+        >
+          Download Video
+        </a>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <header
-        onDoubleClick={() => setStickyHeader((p: boolean) => !p)}
-        onTouchStart={handleTouchStart}
-        className={`w-full bg-black flex flex-col items-center p-4 space-y-2 ${stickyHeader ? "sticky top-0 z-10 ring-2 ring-yellow-400" : ""}`}
-      >
-        <div
-          className="bg-yellow-400 flex items-center justify-center"
-          style={{ width: 64, height: 64 }}
-        >
-          <img src="/favicon.svg" alt="Logo" className="w-16 h-16" />
+    <div className="bg-black border border-yellow-400 rounded-lg overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-2">
+        <div className="flex items-center space-x-2">
+          {thumbnail && <img src={thumbnail} className="w-20 h-20 object-contain" />}
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-yellow-400 font-semibold truncate">{displayTitle}</span>
+              {availableCount > 0 && (
+                <span className="bg-yellow-400 text-black text-xs px-2 py-0.5 rounded">
+                  {availableCount} Stems Available
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-yellow-400 mt-1">
+              Folder: <code className="bg-gray-900 px-1 rounded">{folderName}</code>
+            </div>
+          </div>
         </div>
-        <h1 className="text-3xl sm:text-4xl text-yellow-400 font-extrabold text-center">
-          Copyright <span className="text-black bg-yellow-400 px-2">Violation</span>
-        </h1>
-        
-      </header>
+        <button
+          onClick={() => setExpanded(x => !x)}
+          className="text-yellow-400 p-1 hover:text-yellow-300 transition-colors"
+        >
+          <FaChevronDown className={expanded ? "rotate-180 transform" : ""} />
+        </button>
+      </div>
 
-      <main className="min-h-screen bg-black flex flex-col items-center p-4 sm:p-6 space-y-8 sm:space-y-12">
+      {/* Actions */}
+      <div className="flex flex-wrap gap-2 px-2 pb-2">
+        <a
+          href={f.url}
+          download={`${folderName}.mp3`}
+          className="bg-yellow-400 text-black px-3 py-1 rounded hover:bg-black hover:text-yellow-400 transition-colors"
+        >
+          Download Original
+        </a>
+        <button
+          onClick={startSeparation}
+          disabled={inQueue}
+          className="bg-yellow-400 text-black px-3 py-1 rounded disabled:opacity-50 hover:bg-black hover:text-yellow-400 transition-colors"
+        >
+          {inQueue ? "Separating…" : "Separate Stems"}
+        </button>
+        <button
+          onClick={() =>
+            client.mutate({ mutation: DELETE_DOWNLOAD, variables: { filename: f.filename } })
+          }
+          className="bg-yellow-400 text-black px-3 py-1 rounded hover:bg-black hover:text-yellow-400 transition-colors"
+        >
+          Delete Download
+        </button>
+      </div>
+
+      {/* Logs */}
+      {inQueue && logs.length > 0 && (
+        <div className="mx-2 mb-2 bg-black text-yellow-400 text-xs p-2 rounded max-h-40 overflow-auto">
+          <div className="font-semibold mb-1">Separation Logs</div>
+          <pre className="whitespace-pre-wrap">{logs.join("")}</pre>
+        </div>
+      )}
+
+      {/* Stems grid + player */}
+      {expanded && stems.length > 0 && (
+        <>
+          <div className="p-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+              {stems.map(s => {
+                const { Icon } = STEM_DETAILS[s.name] as { label: string; Icon: IconType };
+                const isSelected = selectedStems.includes(s.name);
+                return (
+                  <div
+                    key={s.name}
+                    onClick={() => toggleStem(s.name)}
+                    className={`flex flex-col items-center p-2 rounded cursor-pointer ${
+                      isSelected
+                        ? "bg-yellow-400 text-black"
+                        : "border border-yellow-400 text-yellow-400"
+                    }`}
+                  >
+                    <Icon className="w-6 h-6 mb-1" />
+                    <span className="text-xs">{s.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <CustomPlayer
+            stems={stems}
+            selected={selectedStems}
+            preloaded={buffersRef.current[f.filename] || {}}
+          />
+        </>
+      )}
+    </div>
+  );
+};
+
+  return (
+    <div className="flex flex-col h-screen">
+<header
+  onDoubleClick={() => setStickyHeader(p => !p)}
+  onTouchStart={handleTouchStart}
+  className={`sticky top-0 z-10 bg-black border-b border-yellow-400 shadow-sm flex items-center justify-between px-6 py-4`}
+>
+  {/* left side: fixed 64×64 yellow box + title */}
+  <div className="flex items-center space-x-4">
+    <div
+      className="bg-yellow-400 flex items-center justify-center"
+      style={{ width: 64, height: 64 }}
+    >
+      <img src="/favicon.svg" alt="Logo" className="w-16 h-16" />
+    </div>
+    <h1 className="text-2xl sm:text-3xl font-extrabold text-yellow-400">
+      Copyright{' '}
+      <span className="text-black bg-yellow-400 px-2">Violation</span>
+    </h1>
+  </div>
+
+  {/* right side: stems-folder picker */}
+  <div className="flex items-center space-x-4">
+    <button
+      onClick={chooseStemsFolder}
+      className="bg-yellow-400 text-black px-3 py-1 rounded hover:bg-yellow-300 transition"
+    >
+      {stemsDirHandle ? 'Change Stems Folder' : 'Set Stems Folder'}
+    </button>
+    {stemsDirHandle && (
+      <span className="text-sm text-yellow-400 truncate max-w-xs">
+        Saving to:{' '}
+        <code className="bg-gray-900 px-1 rounded">
+          {stemsDirHandle.name}
+        </code>
+      </span>
+    )}
+  </div>
+</header>
+
+      
+
+      <main className="flex-1 overflow-y-auto log-scrollbar bg-black flex flex-col items-center p-4 sm:p-6 space-y-8 sm:space-y-12">
 
       {/* URL Input */}
       <div className="w-full max-w-md">
@@ -342,30 +777,57 @@ export default function App() {
         />
       </div>
 
-      {/* Download Buttons */}
-      {videoId && (
-        <div className="w-full max-w-md">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button
-              onClick={startDownloadAudio}
-              disabled={anyLoading}
-              className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
-            >
-              Download Audio
-            </button>
-            <button
-              onClick={startDownloadVideo}
-              disabled={anyLoading}
-              className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
-            >
-              Download Video
-            </button>
-        </div>
-        {downloading && (
-          <div className="mt-2 w-full h-2 bg-yellow-400 animate-pulse rounded" />
-        )}
+{/* Download Buttons & Preview Card */}
+{videoId && (
+  <div className="w-full max-w-md space-y-4">
+    {/* while metadata is loading */}
+    {!audioMeta && !videoMeta && (
+      <div className="text-yellow-400 text-center">
+        Loading video info…
       </div>
-      )}
+    )}
+
+    {/* once we have metadata, show preview */}
+    {(audioMeta || videoMeta) && (
+      <>
+        <div className="bg-black border border-yellow-400 rounded flex items-center p-2">
+          {(audioMeta ?? videoMeta)!.thumbnail && (
+            <img
+              src={(audioMeta ?? videoMeta)!.thumbnail!}
+              alt=""
+              className="w-20 h-20 object-contain mr-4"
+            />
+          )}
+          <span className="text-yellow-400 font-semibold">
+            {(audioMeta ?? videoMeta)!.title}
+          </span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          <button
+            onClick={startDownloadAudio}
+            disabled={anyLoading}
+            className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
+          >
+            Download Audio
+          </button>
+          <button
+            onClick={startDownloadVideo}
+            disabled={anyLoading}
+            className="flex-1 bg-yellow-400 text-black font-bold py-2 rounded hover:bg-yellow-300 disabled:opacity-50"
+          >
+            Download Video
+          </button>
+        </div>
+      </>
+    )}
+
+    {downloading && (
+      <div className="mt-2 w-full h-2 bg-yellow-400 animate-pulse rounded" />
+    )}
+  </div>
+)}
+
 
       {/* Upload Audio */}
       <div
@@ -429,283 +891,41 @@ export default function App() {
         {(dlData?.downloads || [])
           .filter((f: any) => {
             const typeLabel = f.type.charAt(0).toUpperCase() + f.type.slice(1);
-            return `${f.title} (${typeLabel})`.toLowerCase().includes(searchTerm);
+            return `${f.title} (${typeLabel})`
+              .toLowerCase()
+              .includes(searchTerm);
           })
-          .map((f: any) => {
-            if (f.type === "audio") {
-              const ext = f.filename.slice(f.filename.lastIndexOf("."));
-              const saveName = `${f.title} (Audio)${ext}`;
-              const inQueue = queue[f.filename];
-              const stems = f.stems || [];
-              const sel = selected[f.filename] || {};
-              const toggle = (name: string) => {
-                setSelected((p: Record<string, Record<string, boolean>>) => ({
-                  ...p,
-                  [f.filename]: { ...sel, [name]: !sel[name] },
-                }));
-              };
-              const downloadSelected = () => {
-                Object.entries(sel).forEach(([name, v]) => {
-                  if (v) {
-                    const stem = stems.find((s: any) => s.name === name);
-                    if (stem) {
-                      const a = document.createElement("a");
-                      a.href = new URL(stem.url, window.location.origin).href;
-                      a.download = `${f.title} (${name}).mp3`;
-                      a.click();
-                    }
-                  }
-                });
-              };
+          .map((f: any) => (
+            <DownloadItemCard key={f.filename} f={f} stemsDirHandle={stemsDirHandle} />
+          ))}
+      </div>
 
-
-
-              const isExpanded = !!expanded[f.filename];
-              const isShowingPlayers = !!showPlayers[f.filename];
-              const togglePlayers = () => {
-                setShowPlayers((p: Record<string, boolean>) => ({
-                  ...p,
-                  [f.filename]: !isShowingPlayers,
-                }));
-              };
-              const missingStems = AVAILABLE_STEMS.filter(
-                (name) => !stems.some((s: any) => s.name === name)
-              );
-              const startSeparation = (custom?: string[]) => {
-                const toSeparate =
-                  custom && custom.length
-                    ? custom
-                    : missingStems.length
-                    ? missingStems
-                    : AVAILABLE_STEMS;
-                setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
-                setLogs([]);
-                client
-                  .subscribe({
-                    query: SEPARATE_STEMS_PROGRESS,
-                    variables: {
-                      filename: f.filename,
-                      model: "htdemucs_6s",
-                      stems: toSeparate,
-                      },
-                    })
-                    .subscribe({
-                      next(res) {
-                        const line = res.data?.separateStemsProgress;
-                        if (line) setLogs((p) => [...p.slice(-MAX_LOG_LINES + 1), line]);
-                      },
-                      error() {
-                        setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
-                      },
-                      complete() {
-                        setQueue((p: Record<string, boolean>) => ({ ...p, [f.filename]: false }));
-                        setExpanded((p: Record<string, boolean>) => ({ ...p, [f.filename]: true }));
-                        refetch();
-                      },
-                    });
-                };
-              const stemsToShow: Stem[] = stems;
-                
-                return (
-                  <div
-                    key={f.filename}
-                  className="bg-black border border-yellow-400 rounded-lg overflow-hidden flex flex-col"
-                >
-                  <div className="flex">
-                    {f.thumbnail && (
-                      <img
-                        src={f.thumbnail}
-                        alt=""
-                        className="w-20 h-20 object-contain"
-                      />
-                    )}
-                    <div className="flex-1 p-2 flex flex-col justify-between">
-                      <div className="flex items-center justify-between">
-                        <span className="text-yellow-400 font-semibold">
-                          {f.title} (Audio)
-                        </span>
-                        <button
-                          onClick={() => {
-                            const willExpand = !isExpanded;
-                            setExpanded((p: Record<string, boolean>) => ({
-                              ...p,
-                              [f.filename]: willExpand,
-                            }));
-                            if (willExpand && stems.length > 0) {
-                              preloadStems(f.filename, stemsToShow);
-                            }
-                          }}
-                          className="text-yellow-400"
-                        >
-                          <FaChevronDown className={isExpanded ? "transform rotate-180" : ""} />
-                        </button>
-                      </div>
-                      <div className="flex mt-2 space-x-2 self-end">
-                        <a
-                          href={f.url}
-                          download={saveName}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
-                        >
-                          Download
-                        </a>
-                        <button
-                          onClick={() => startSeparation()}
-                          disabled={inQueue}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300 disabled:opacity-50"
-                        >
-                          {inQueue ? "Separating..." : "Separate"}
-                        </button>
-                        <button
-                          onClick={() => openStems(f.filename)}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
-                        >
-                          Open Folder
-                        </button>
-                        <button
-                          onClick={() => deleteFile(f.filename)}
-                          className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded hover:bg-yellow-300"
-                        >
-                          Delete
-                        </button>
-                      </div>
-
-                    </div>
-                  </div>
-                  {isExpanded && stemsToShow.length > 0 && (
-                    <div className="p-2 flex flex-col space-y-2">
-                      {stems.length > 0 && loadingStems[f.filename] ? (
-                        <div className="w-full h-2 bg-yellow-400 animate-pulse rounded" />
-                      ) : (
-                        <>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-                            {stemsToShow.map((s: any) => {
-                              const detail = STEM_DETAILS[s.name] || {
-                                label: s.name,
-                                Icon: FaQuestionCircle,
-                              };
-                              const Icon = detail.Icon;
-                              const selectedStem = !!sel[s.name];
-                              return (
-                                <a
-                                  key={s.name}
-                                  href={new URL(s.url, window.location.origin).href}
-                                  download={`${f.title} (${s.name}).mp3`}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    toggle(s.name);
-                                  }}
-                                  className={`border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 ${selectedStem ? "bg-yellow-400 text-black" : "text-yellow-400"}`}
-                                >
-                                  <Icon className="w-6 h-6" />
-                                  <span className="text-xs font-semibold">{detail.label}</span>
-                                </a>
-                              );
-                            })}
-                            {missingStems.map((name) => {
-                              const detail = STEM_DETAILS[name] || {
-                                label: name,
-                                Icon: FaQuestionCircle,
-                              };
-                              const Icon = detail.Icon;
-                              return (
-                                <div
-                                  key={name}
-                                  className="border border-yellow-400 rounded p-2 flex flex-col items-center justify-center space-y-1 opacity-50 cursor-not-allowed"
-                                >
-                                  <Icon className="w-6 h-6" />
-                                  <span className="text-xs font-semibold">{detail.label}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {Object.values(sel).some(Boolean) && (
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={downloadSelected}
-                                className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
-                              >
-                                Download Selected
-                              </button>
-                              <button
-                                onClick={togglePlayers}
-                                className="bg-yellow-400 text-black text-sm font-bold px-2 py-1 rounded"
-                              >
-                                {isShowingPlayers ? "Hide Players" : "Play Selected"}
-                              </button>
-                            </div>
-                          )}
-                          {isShowingPlayers && (
-                            <CustomPlayer
-                              stems={stemsToShow}
-                              selected={Object.keys(sel).filter((k) => sel[k])}
-                              preloaded={buffersRef.current[f.filename] || {}}
-                            />
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {inQueue && (
-                    <div className="h-2 bg-yellow-400 animate-pulse w-full" />
-                  )}
-                </div>
-              );
-            } else {
-              const ext = f.filename.slice(f.filename.lastIndexOf("."));
-              const saveName = `${f.title} (Video)${ext}`;
-              return (
-                <div
-                  key={f.filename}
-                  className="bg-yellow-400 border border-black rounded-lg overflow-hidden flex"
-                >
-                  {f.thumbnail && (
-                    <img
-                      src={f.thumbnail}
-                      alt=""
-                      className="w-20 h-20 object-contain"
-                    />
-                  )}
-                  <div className="flex-1 p-2 flex flex-col justify-between">
-                    <span className="text-black font-semibold">
-                      {f.title} (Video)
-                    </span>
-                    <a
-                      href={f.url}
-                      download={saveName}
-                      className="mt-2 bg-black text-yellow-400 text-sm font-bold px-2 py-1 rounded hover:bg-gray-800 self-end"
-                    >
-                      Download
-                    </a>
-                  </div>
-                  </div>
-                );
-              }
-            })}
-          </div>
       </main>
-      {logs.length > 0 && (
-        <footer
-          onDoubleClick={() => setStickyLogs((p: boolean) => !p)}
-          onTouchStart={handleLogTouchStart}
-          className={`bg-black text-yellow-400 text-xs border-t border-yellow-400 ${stickyLogs ? "sticky bottom-0 z-10" : ""}`}
-        >
-          <div className="flex justify-end">
-            <div
-              className="flex items-center gap-1 p-2 cursor-pointer select-none"
-              onClick={() => setLogCollapsed((p) => !p)}
-            >
-              <span className="font-bold text-sm">Logs</span>
-              <button>{logCollapsed ? "▲" : "▼"}</button>
-            </div>
+      <footer
+        onDoubleClick={() => setStickyLogs((p) => !p)}
+        onTouchStart={handleLogTouchStart}
+        className={`bg-black text-yellow-400 text-xs border-t border-yellow-400 ${
+          stickyLogs ? "sticky bottom-0 z-10" : ""
+        }`}
+      >
+        <div className="flex justify-end">
+          <div
+            className="flex items-center gap-1 p-2 cursor-pointer select-none"
+            onClick={() => setLogCollapsed((p) => !p)}
+          >
+            <span className="font-bold text-sm">Logs</span>
+            <button>{logCollapsed ? "▲" : "▼"}</button>
           </div>
-          {!logCollapsed && (
-            <pre className="max-h-60 overflow-auto p-2 log-scrollbar">
-              {logs.join("")}
-              <div ref={logsEndRef} />
-            </pre>
-          )}
-        </footer>
-      )}
-    </>
+        </div>
+
+        {!logCollapsed && (
+          <pre className="max-h-60 overflow-auto p-2 log-scrollbar overscroll-y-contain">
+            {logs.length > 0 ? logs.join("") : "— No logs yet —\n"}
+            <div ref={logsEndRef} />
+          </pre>
+        )}
+      </footer>
+    </div>
   );
+  
 }
