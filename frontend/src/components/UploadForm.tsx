@@ -1,5 +1,5 @@
 // src/components/UploadForm.tsx
-import React, { useState, DragEvent } from "react";
+import { useState, type DragEvent } from "react";
 import { useMutation, useApolloClient } from "@apollo/client";
 import { toast } from "react-toastify";
 import { UPLOAD_AUDIO } from "../graphql/mutations";

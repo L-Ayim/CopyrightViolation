@@ -1,33 +1,17 @@
 // src/App.tsx
-import React from "react";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 import DownloadForm from "./components/DownloadForm";
 import UploadForm from "./components/UploadForm";
 import DownloadList from "./components/DownloadList";
-import { useQuery, useMutation } from "@apollo/client";
-import { DOWNLOAD_AUDIO } from "./graphql/mutations";
+import { useQuery } from "@apollo/client";
 import { GET_DOWNLOADS } from "./graphql/queries";
 
 export default function App() {
   // 1) load all existing downloads
-  const { data, loading, error, refetch } = useQuery(GET_DOWNLOADS);
+  const { data, loading, error } = useQuery(GET_DOWNLOADS);
   const downloads = data?.downloads ?? [];
-
-  // 2) one mutation to download+separate on the server
-  const [downloadAudio, { loading: downloading }] = useMutation(
-    DOWNLOAD_AUDIO,
-    {
-      onCompleted: () => {
-        // once the server is done, refresh the list
-        refetch();
-      },
-      onError: (e) => {
-        console.error("Download+Separate failed:", e);
-      },
-    }
-  );
 
   return (
     <div className="flex flex-col h-screen bg-black text-yellow-400">
@@ -50,11 +34,7 @@ export default function App() {
       {/* Main */}
       <main className="flex-1 overflow-auto p-6 space-y-8">
         {/* Download by URL */}
-        <DownloadForm
-          onNewDownload={(url: string) => {
-            if (!downloading) downloadAudio({ variables: { url } });
-          }}
-        />
+        <DownloadForm />
 
         {/* Upload from file */}
         <UploadForm />

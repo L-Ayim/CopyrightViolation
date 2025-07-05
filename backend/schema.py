@@ -61,9 +61,10 @@ def list_stems_for(vid: str) -> list[dict]:
     out = []
     if stems_dir.exists():
         for f in sorted(stems_dir.rglob("*.mp3")):
+            rel = f.relative_to(stems_dir).as_posix()
             out.append({
                 "name": Path(f).stem,
-                "url":   MEDIA_URL + f"{vid}/stems/{f.name}",
+                "url":   MEDIA_URL + f"{vid}/stems/{rel}",
                 "path":  str(f.resolve()),
             })
     return out

@@ -1,5 +1,5 @@
 // src/components/CustomPlayer.tsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { FaPause, FaPlay, FaRedo } from "react-icons/fa";
 import { PitchShifter } from "soundtouchjs";
 import { toast } from "react-toastify";
@@ -102,7 +102,7 @@ export default function CustomPlayer({
         shifter.connect(gain);
         gain.connect(ctx.destination);
         shifter.percentagePlayed = offset / buffer.duration;
-        shifter.on("play", (d: any) => setPlayed(d.timePlayed));
+        shifter.on("play", (d: { timePlayed: number }) => setPlayed(d.timePlayed));
 
         sourcesRef.current[name] = { shifter, gain };
       });
@@ -121,7 +121,9 @@ export default function CustomPlayer({
     Object.values(sourcesRef.current).forEach(({ shifter }) => {
       try {
         shifter.disconnect();
-      } catch {}
+      } catch {
+        // ignore errors during disconnect
+      }
     });
     sourcesRef.current = {};
     setIsPlaying(false);

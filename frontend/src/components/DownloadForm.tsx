@@ -1,15 +1,11 @@
 // src/components/DownloadForm.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@apollo/client";
 import { DOWNLOAD_AUDIO } from "../graphql/mutations";
 import { GET_DOWNLOADS } from "../graphql/queries";
 import { toast } from "react-toastify";
 
-interface Props {
-  onNewDownload: (url: string) => void;
-}
-
-export default function DownloadForm({ onNewDownload }: Props) {
+export default function DownloadForm() {
   const [url, setUrl] = useState("");
 
   const [downloadAudio, { loading }] = useMutation(DOWNLOAD_AUDIO, {
@@ -32,7 +28,6 @@ export default function DownloadForm({ onNewDownload }: Props) {
     if (!trimmed) return;
     try {
       await downloadAudio({ variables: { url: trimmed } });
-      onNewDownload(trimmed);
       setUrl("");
     } catch {
       // error already shown by onError
