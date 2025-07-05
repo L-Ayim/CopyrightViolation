@@ -1,5 +1,5 @@
 // src/components/DownloadItemCard.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 import { useApolloClient } from "@apollo/client";
 import { toast } from "react-toastify";
 import { DELETE_DOWNLOAD } from "../graphql/mutations";
@@ -38,8 +38,9 @@ export default function DownloadItemCard({ audio }: Props) {
       } else {
         toast.error("Delete failed");
       }
-    } catch (err: any) {
-      toast.error(`Error deleting: ${err.message}`);
+    } catch (err: unknown) {
+      const message = (err as Error).message ?? String(err);
+      toast.error(`Error deleting: ${message}`);
     }
   };
 
