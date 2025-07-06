@@ -1,10 +1,12 @@
-# Python dependencies for the Django backend
+# requirements.txt
+
 Django>=5.2,<6
 channels>=4
 django-cors-headers>=4
 ariadne>=0.23
 ariadne-django>=0.3
 yt-dlp>=2024.4.0
-daphne>=4
+uvicorn[standard]>=0.23          # use Uvicorn instead of Daphne
 demucs>=4
 numpy>=1.26
+torch>=2.0; sys_platform != 'win32'  # example PyTorch; adjust as needed

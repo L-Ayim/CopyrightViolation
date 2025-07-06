@@ -1,52 +1,78 @@
-import asyncio
-import subprocess
-import json
-import urllib.parse
-from pathlib import Path
+# backend/schema.py
+
 import sys
-import shutil
 import os
 import re
+import json
+import shutil
+import subprocess
+import urllib.parse
+from pathlib import Path
 
+import torch
 from ariadne import (
-    make_executable_schema,
     QueryType,
     MutationType,
-    SubscriptionType,
+    make_executable_schema,
     gql,
     upload_scalar,
 )
-import torch
 from django.conf import settings
 
-# Ensure MEDIA_ROOT exists
+# ─── Constants & Helpers ──────────────────────────────────────────────────────
+
 MEDIA_DIR = Path(settings.MEDIA_ROOT)
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+MEDIA_URL = settings.MEDIA_URL.rstrip("/") + "/"
 
-# Optional delay between yt-dlp requests to avoid YouTube rate limits
-YT_DLP_SLEEP = float(os.getenv("YT_DLP_SLEEP", "0"))
-YT_DLP_BASE_ARGS = ["yt-dlp", "--print-json", "--newline"]
-if YT_DLP_SLEEP > 0:
-    YT_DLP_BASE_ARGS += ["--sleep-requests", str(YT_DLP_SLEEP)]
+def extract_video_id(url: str) -> str:
+    p = urllib.parse.urlparse(url)
+    qs = urllib.parse.parse_qs(p.query)
+    return qs.get("v", [Path(p.path).stem])[0]
 
-type_defs = gql(
-    """
+def sanitize_filename(name: str) -> str:
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(name).stem)
+    return base.strip("._") or "file"
+
+def unique_filename(title: str, ext: str) -> tuple[str, str]:
+    base = sanitize_filename(title)
+    cand = base
+    i = 1
+    # avoid collisions with both .mp3 and .json files
+    while (MEDIA_DIR / f"{cand}{ext}").exists() or (MEDIA_DIR / f"{cand}.json").exists():
+        cand = f"{base}_{i}"
+        i += 1
+    return f"{cand}{ext}", cand
+
+def write_metadata(vid: str, info: dict):
+    (MEDIA_DIR / f"{vid}.json").write_text(json.dumps({
+        "title":     info.get("title", vid),
+        "thumbnail": info.get("thumbnail"),
+    }))
+
+def read_metadata(vid: str) -> dict:
+    p = MEDIA_DIR / f"{vid}.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    return {"title": vid, "thumbnail": None}
+
+def list_stems_for(vid: str) -> list[dict]:
+    stems_dir = MEDIA_DIR / vid / "stems"
+    out = []
+    if stems_dir.exists():
+        for f in sorted(stems_dir.rglob("*.mp3")):
+            rel = f.relative_to(stems_dir).as_posix()
+            out.append({
+                "name": Path(f).stem,
+                "url":   MEDIA_URL + f"{vid}/stems/{rel}",
+                "path":  str(f.resolve()),
+            })
+    return out
+
+# ─── GraphQL Schema ───────────────────────────────────────────────────────────
+
+type_defs = gql("""
   scalar Upload
-
-  type DownloadResponse {
-    success: Boolean!
-    message: String
-    downloadUrl: String
-  }
-
-  type DownloadedFile {
-    filename: String!
-    url: String!      # e.g. "/media/IEc30xnkqQ8.mp4"
-    type: String!
-    title: String!
-    thumbnail: String
-    stems: [Stem!]!
-  }
 
   type Stem {
     name: String!
@@ -54,475 +80,157 @@ type_defs = gql(
     path: String!
   }
 
-  type SeparationResponse {
+  type DownloadedAudio {
+    filename: String!
+    url: String!
+    title: String!
+    thumbnail: String
+    stems: [Stem!]!
+  }
+
+  type DownloadResponse {
     success: Boolean!
-    logs: String
+    message: String
+    downloadUrl: String
   }
 
   type Query {
-    downloads: [DownloadedFile!]!
+    downloads: [DownloadedAudio!]!
   }
 
   type Mutation {
     downloadAudio(url: String!): DownloadResponse!
-    downloadVideo(url: String!): DownloadResponse!
     uploadAudio(file: Upload!, title: String): DownloadResponse!
-    separateStems(
-      filename: String!,
-      model: String!,
-      stems: [String!]!
-    ): SeparationResponse!
     deleteDownload(filename: String!): Boolean!
-    openStemsFolder(filename: String!): Boolean!
   }
-  type Subscription {
-    downloadAudioProgress(url: String!): String!
-    downloadVideoProgress(url: String!): String!
-    separateStemsProgress(
-      filename: String!,
-      model: String!,
-      stems: [String!]!
-    ): String!
-  }
-"""
-)
+""")
 
 query = QueryType()
 mutation = MutationType()
-subscription = SubscriptionType()
 
-# Map video ID to the filename produced by the progress download
-DOWNLOAD_MAP: dict[str, str] = {}
-
-
-def extract_video_id(url: str) -> str:
-    parsed = urllib.parse.urlparse(url)
-    qs = urllib.parse.parse_qs(parsed.query)
-    if "v" in qs:
-        return qs["v"][0]
-    return parsed.path.rstrip("/").split("/")[-1]
-
-
-def build_media_url(filename: str) -> str:
-    base = settings.MEDIA_URL
-    if not base.endswith("/"):
-        base += "/"
-    return f"{base}{filename}"
-
-
-def write_metadata(vid: str, info: dict):
-    meta_path = MEDIA_DIR / f"{vid}.json"
-    meta = {
-        "title": info.get("title", vid),
-        "thumbnail": info.get("thumbnail"),
-    }
-    meta_path.write_text(json.dumps(meta))
-
-
-def read_metadata(vid: str):
-    meta_path = MEDIA_DIR / f"{vid}.json"
-    if not meta_path.exists():
-        return {"title": vid, "thumbnail": None}
-    return json.loads(meta_path.read_text())
-
-
-def sanitize_filename(title: str) -> str:
-    """Return a filesystem-friendly version of ``title`` without an extension."""
-    name = Path(title).stem
-    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
-    name = name.strip("._")
-    return name or "file"
-
-
-def unique_filename(title: str, ext: str) -> tuple[str, str]:
-    """Return a unique filename and stem based on ``title`` and ``ext``."""
-    base = sanitize_filename(title)
-    candidate = base
-    i = 1
-    while (
-        (MEDIA_DIR / f"{candidate}{ext}").exists()
-        or (MEDIA_DIR / f"{candidate}.json").exists()
-        or (MEDIA_DIR / candidate).exists()
-    ):
-        candidate = f"{base}_{i}"
-        i += 1
-    return f"{candidate}{ext}", candidate
-
-
-@mutation.field("deleteDownload")
-def resolve_delete_download(_, __, filename: str):
-    vid = Path(filename).stem
-    try:
-        file_path = MEDIA_DIR / filename
-        if file_path.exists():
-            if file_path.is_dir():
-                shutil.rmtree(file_path, ignore_errors=True)
-            else:
-                file_path.unlink()
-        dir_path = MEDIA_DIR / vid
-        if dir_path.exists():
-            shutil.rmtree(dir_path, ignore_errors=True)
-        meta_path = MEDIA_DIR / f"{vid}.json"
-        if meta_path.exists():
-            meta_path.unlink()
-        return True
-    except Exception:
-        return False
-
-
-def open_folder(path: Path):
-    try:
-        if sys.platform.startswith("win"):
-            os.startfile(path)  # type: ignore[attr-defined]
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(path)])
-        else:
-            subprocess.Popen(["xdg-open", str(path)])
-        return True
-    except Exception:
-        return False
-
-
-@mutation.field("openStemsFolder")
-def resolve_open_stems_folder(_, __, filename: str):
-    vid = Path(filename).stem
-    stems_dir = MEDIA_DIR / vid / "stems"
-    htdemucs_path = stems_dir / "htdemucs_6s"
-    if htdemucs_path.exists():
-        return open_folder(htdemucs_path)
-    if stems_dir.exists():
-        return open_folder(stems_dir)
-    return False
-
-
-async def stream_process(cmd: list[str], env: dict | None = None):
-    """Yield output lines from a subprocess as they are produced.
-
-    On platforms where ``asyncio`` cannot create subprocess transports (e.g.
-    some Windows event loops), fall back to a synchronous ``subprocess``
-    running in the current thread and yield its output asynchronously.
-    """
-    base_env = os.environ.copy()
-    base_env.setdefault("PYTHONUNBUFFERED", "1")
-    if env:
-        base_env.update(env)
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env=base_env,
-        )
-        assert proc.stdout is not None
-        while True:
-            line = await proc.stdout.readline()
-            if not line:
-                break
-            yield line.decode()
-        await proc.wait()
-    except NotImplementedError:
-        with subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=base_env,
-        ) as proc:
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                yield line
-                await asyncio.sleep(0)
-            proc.wait()
-
+# ─── Query Resolvers ───────────────────────────────────────────────────────────
 
 @query.field("downloads")
-def resolve_downloads(_, __):
+def resolve_downloads(*_):
     items = []
-    files = [f for f in MEDIA_DIR.iterdir() if f.is_file()]
-    files.sort(key=lambda p: p.stat().st_mtime)
-    audio_exts = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
-    for f in files:
-        ext = f.suffix.lower()
-        if ext in audio_exts:
-            typ = "audio"
-        elif ext == ".mp4":
-            typ = "video"
-        else:
+    for f in sorted(MEDIA_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        if f.suffix.lower() != ".mp3":
             continue
-
         vid = f.stem
         meta = read_metadata(vid)
-        rel_url = build_media_url(f.name)
-
-        stems_list = []
-        if typ == "audio":
-            stems_dir = MEDIA_DIR / vid / "stems"
-            if stems_dir.exists():
-                for stem_file in sorted(stems_dir.rglob("*.mp3")):
-                    stems_list.append(
-                        {
-                            "name": stem_file.stem,
-                            "url": build_media_url(
-                                f"{vid}/stems/"
-                                f"{stem_file.relative_to(stems_dir)}"
-                            ),
-                            "path": str(stem_file.resolve()),
-                        }
-                    )
-
-        items.append(
-            {
-                "filename": f.name,
-                "url": rel_url,
-                "type": typ,
-                "title": meta["title"],
-                "thumbnail": meta.get("thumbnail"),
-                "stems": stems_list,
-            }
-        )
+        items.append({
+            "filename":  f.name,
+            "url":       MEDIA_URL + f.name,
+            "title":     meta["title"],
+            "thumbnail": meta.get("thumbnail"),
+            "stems":     list_stems_for(vid),
+        })
     return items
 
-
-
+# ─── Mutation Resolvers ────────────────────────────────────────────────────────
 
 @mutation.field("downloadAudio")
-def resolve_download_audio(_, __, url: str):
+def resolve_download_audio(*_, url: str):
     vid = extract_video_id(url)
-    base = DOWNLOAD_MAP.pop(vid, None)
-    if not base:
-        return {"success": False, "message": "No download", "downloadUrl": None}
 
-    out_filename = f"{base}.mp3"
-    out_path = MEDIA_DIR / out_filename
-    if not out_path.exists():
-        return {"success": False, "message": "File missing", "downloadUrl": None}
+    # 1) Fetch JSON metadata
+    dump = subprocess.run(
+        ["yt-dlp", "--dump-json", url],
+        capture_output=True, text=True
+    )
+    if dump.returncode != 0:
+        return {
+            "success": False,
+            "message": dump.stderr or "Metadata fetch failed",
+            "downloadUrl": None
+        }
+    try:
+        info = json.loads(dump.stdout)
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "message": "Unable to parse metadata",
+            "downloadUrl": None
+        }
 
-    rel_url = build_media_url(out_filename)
-    return {"success": True, "message": "", "downloadUrl": rel_url}
+    # 2) Determine unique output filename
+    ext = ".mp3"
+    out_fn, base = unique_filename(info.get("title", vid), ext)
+    out_path = MEDIA_DIR / out_fn
 
+    # 3) Save metadata for title & thumbnail
+    write_metadata(base, {
+        "title": info.get("title", vid),
+        "thumbnail": info.get("thumbnail"),
+    })
 
-@mutation.field("downloadVideo")
-def resolve_download_video(_, __, url: str):
-    vid = extract_video_id(url)
-    base = DOWNLOAD_MAP.pop(vid, None)
-    if not base:
-        return {"success": False, "message": "No download", "downloadUrl": None}
+    # 4) Download MP3
+    dl = subprocess.run(
+        ["yt-dlp", "-x", "--audio-format", "mp3", "-o", str(out_path), url],
+        capture_output=True, text=True
+    )
+    if dl.returncode != 0:
+        return {
+            "success": False,
+            "message": dl.stderr or "Download failed",
+            "downloadUrl": None
+        }
 
-    out_filename = f"{base}.mp4"
-    out_path = MEDIA_DIR / out_filename
-    if not out_path.exists():
-        return {"success": False, "message": "File missing", "downloadUrl": None}
+    # 5) Separate stems with Demucs
+    stems_dir = MEDIA_DIR / base / "stems"
+    stems_dir.mkdir(parents=True, exist_ok=True)
+    sep = subprocess.run(
+        [
+            sys.executable, "-m", "demucs.separate",
+            "-n", "htdemucs_6s",
+            "--out", str(stems_dir),
+            "--filename", "{stem}.{ext}", "--mp3",
+            str(out_path),
+        ],
+        capture_output=True, text=True
+    )
+    if sep.returncode != 0:
+        return {
+            "success": False,
+            "message": sep.stderr or "Separation failed",
+            "downloadUrl": MEDIA_URL + out_fn
+        }
 
-    rel_url = build_media_url(out_filename)
-    return {"success": True, "message": "", "downloadUrl": rel_url}
-
+    return {
+        "success": True,
+        "message": "Download & separation complete",
+        "downloadUrl": MEDIA_URL + out_fn
+    }
 
 @mutation.field("uploadAudio")
-def resolve_upload_audio(_, __, file, title: str | None = None):
+def resolve_upload_audio(*_, file, title=None):
     ext = Path(file.name).suffix or ".mp3"
-    out_filename, vid = unique_filename(title or file.name, ext)
-    out_path = MEDIA_DIR / out_filename
-    with open(out_path, "wb") as dst:
+    out_fn, base = unique_filename(title or file.name, ext)
+    with open(MEDIA_DIR / out_fn, "wb") as dst:
         for chunk in file.chunks():
             dst.write(chunk)
-    write_metadata(vid, {"title": title or file.name, "thumbnail": None})
-    rel_url = build_media_url(out_filename)
-    return {"success": True, "message": "", "downloadUrl": rel_url}
+    write_metadata(base, {
+        "title": title or file.name,
+        "thumbnail": None
+    })
+    return {
+        "success": True,
+        "message": "Upload complete",
+        "downloadUrl": MEDIA_URL + out_fn
+    }
 
+@mutation.field("deleteDownload")
+def resolve_delete_download(*_, filename: str):
+    try:
+        f = MEDIA_DIR / filename
+        vid = f.stem
+        f.unlink()
+        shutil.rmtree(MEDIA_DIR / vid, ignore_errors=True)
+        (MEDIA_DIR / f"{vid}.json").unlink(missing_ok=True)
+        return True
+    except:
+        return False
 
-@mutation.field("separateStems")
-def resolve_separate_stems(_, __, filename: str, model: str, stems: list[str]):
-    src_path = MEDIA_DIR / filename
-    vid = Path(filename).stem
-    out_dir = MEDIA_DIR / vid / "stems"
-    out_dir.mkdir(parents=True, exist_ok=True)
+# ─── Build & export schema ─────────────────────────────────────────────────────
 
-    cuda_available = torch.cuda.is_available()
-    device = "cuda" if cuda_available else "cpu"
-    if not cuda_available:
-        if torch.version.cuda is None:
-            reason = "PyTorch was installed without CUDA support."
-        else:
-            reason = "CUDA runtime not available."
-    else:
-        reason = ""
-    device_flag = f"--device={device}"
-    cmd = [
-        sys.executable,
-        "-m",
-        "demucs.separate",
-        "-n",
-        model,
-        "--out",
-        str(out_dir),
-        "--filename",
-        "{stem}.{ext}",
-        "--mp3",
-        device_flag,
-    ]
-    if stems:
-        stems_lower = [s.lower() for s in stems]
-        unique = set(stems_lower)
-        if unique == {"vocals", "accompaniment"}:
-            cmd += ["--two-stems", "vocals"]
-        elif len(unique) == 1:
-            cmd += ["--stem", next(iter(unique))]
-    cmd.append(str(src_path))
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    extra = f"\n{reason}" if reason else ""
-    logs = f"Using device: {device}{extra}\n" + proc.stdout + proc.stderr
-    success = proc.returncode == 0
-    return {"success": success, "logs": logs}
-
-
-@subscription.source("downloadAudioProgress")
-async def stream_download_audio(_, info, url: str):
-    vid = extract_video_id(url)
-    tmp_path = MEDIA_DIR / f"{vid}.tmp.mp3"
-    for p in [MEDIA_DIR / f"{vid}.mp3", tmp_path]:
-        if p.exists():
-            p.unlink()
-
-    cmd = (
-        YT_DLP_BASE_ARGS
-        + [
-            "-x",
-            "--audio-format",
-            "mp3",
-            "-o",
-            str(tmp_path),
-            url,
-        ]
-    )
-    seen_info = False
-    info_data: dict | None = None
-    async for line in stream_process(cmd):
-        if not seen_info and line.strip().startswith("{"):
-            try:
-                info_data = json.loads(line)
-                seen_info = True
-            except json.JSONDecodeError:
-                pass
-            continue
-        yield line
-
-    title = info_data.get("title") if info_data else vid
-    out_filename, base = unique_filename(title, ".mp3")
-    out_path = MEDIA_DIR / out_filename
-    if tmp_path.exists():
-        tmp_path.rename(out_path)
-    write_metadata(base, info_data or {"title": title, "thumbnail": None})
-    DOWNLOAD_MAP[vid] = base
-
-
-@subscription.field("downloadAudioProgress")
-def resolve_download_audio_progress(line, info, url: str):
-    return line
-
-
-@subscription.source("downloadVideoProgress")
-async def stream_download_video(_, info, url: str):
-    vid = extract_video_id(url)
-    tmp_path = MEDIA_DIR / f"{vid}.tmp.mp4"
-    for p in [MEDIA_DIR / f"{vid}.mp4", tmp_path]:
-        if p.exists():
-            p.unlink()
-
-    cmd = (
-        YT_DLP_BASE_ARGS
-        + [
-            "-f",
-            "bestvideo+bestaudio",
-            "--merge-output-format",
-            "mp4",
-            "-o",
-            str(tmp_path),
-            url,
-        ]
-    )
-    seen_info = False
-    info_data: dict | None = None
-    async for line in stream_process(cmd):
-        if not seen_info and line.strip().startswith("{"):
-            try:
-                info_data = json.loads(line)
-                seen_info = True
-            except json.JSONDecodeError:
-                pass
-            continue
-        yield line
-
-    title = info_data.get("title") if info_data else vid
-    out_filename, base = unique_filename(title, ".mp4")
-    out_path = MEDIA_DIR / out_filename
-    if tmp_path.exists():
-        tmp_path.rename(out_path)
-    write_metadata(base, info_data or {"title": title, "thumbnail": None})
-    DOWNLOAD_MAP[vid] = base
-
-
-@subscription.field("downloadVideoProgress")
-def resolve_download_video_progress(line, info, url: str):
-    return line
-
-
-@subscription.source("separateStemsProgress")
-async def stream_separate_stems(
-    _, info, filename: str, model: str, stems: list[str]
-):
-    src_path = MEDIA_DIR / filename
-    vid = Path(filename).stem
-    out_dir = MEDIA_DIR / vid / "stems"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    cuda_available = torch.cuda.is_available()
-    device = "cuda" if cuda_available else "cpu"
-    if not cuda_available:
-        if torch.version.cuda is None:
-            reason = "PyTorch was installed without CUDA support."
-        else:
-            reason = "CUDA runtime not available."
-    else:
-        reason = ""
-    device_flag = f"--device={device}"
-
-    intro = f"Using device: {device}\n"
-    if reason:
-        intro += reason + "\n"
-    yield intro
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "demucs.separate",
-        "-n",
-        model,
-        "--out",
-        str(out_dir),
-        "--filename",
-        "{stem}.{ext}",
-        "--mp3",
-        device_flag,
-    ]
-    if stems:
-        stems_lower = [s.lower() for s in stems]
-        unique = set(stems_lower)
-        if unique == {"vocals", "accompaniment"}:
-            cmd += ["--two-stems", "vocals"]
-        elif len(unique) == 1:
-            cmd += ["--stem", next(iter(unique))]
-    cmd.append(str(src_path))
-    async for line in stream_process(cmd):
-        yield line
-
-
-@subscription.field("separateStemsProgress")
-def resolve_separate_stems_progress(
-    line, info, filename: str, model: str, stems: list[str]
-):
-    return line
-
-
-schema = make_executable_schema(
-    type_defs, query, mutation, subscription, upload_scalar
-)
+schema = make_executable_schema(type_defs, query, mutation, upload_scalar)

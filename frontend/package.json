@@ -14,10 +14,12 @@
     "apollo-upload-client": "^18.0.1",
     "graphql": "^16.11.0",
     "graphql-ws": "^6.0.5",
+    "idb-keyval": "^6.2.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-icons": "^5.5.0",
     "react-router-dom": "^6.30.1",
+    "react-toastify": "^11.0.5",
     "soundtouchjs": "^0.2.1"
   },
   "devDependencies": {
